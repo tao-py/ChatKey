@@ -1,0 +1,60 @@
+{
+  "name": "ai-qa-comparison-tool",
+  "version": "1.0.0",
+  "description": "AI问答对比工具 - 同时向多个AI平台提问并对比回答",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "concurrently \"npm run dev:renderer\" \"wait-on http://localhost:3000 && electron .\"",
+    "dev:renderer": "cd src/renderer && npm start",
+    "build": "npm run build:renderer && npm run build:main",
+    "build:renderer": "cd src/renderer && npm run build",
+    "build:main": "echo 'Main build complete'",
+    "pack": "electron-builder",
+    "dist": "electron-builder --publish=never",
+    "lint": "eslint src/",
+    "test": "jest"
+  },
+  "keywords": ["electron", "ai", "qa", "comparison", "puppeteer"],
+  "author": "AI Tool Developer",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "electron": "^27.0.0",
+    "electron-builder": "^24.6.4",
+    "eslint": "^8.50.0",
+    "wait-on": "^7.0.1",
+    "jest": "^29.7.0"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "puppeteer": "^21.3.0",
+    "sqlite3": "^5.1.6",
+    "uuid": "^9.0.1",
+    "cors": "^2.8.5",
+    "body-parser": "^1.20.2",
+    "crypto": "^1.0.1"
+  },
+  "build": {
+    "appId": "com.ai.qa.comparison",
+    "productName": "AI问答对比工具",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "node_modules/**/*",
+      "!node_modules/.cache",
+      "!src/renderer/node_modules"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  }
+}

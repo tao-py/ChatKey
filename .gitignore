@@ -1,0 +1,30 @@
+node_modules/
+dist/
+build/
+logs/
+*.log
+.DS_Store
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# 数据库文件
+*.db
+*.sqlite
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 打包输出
+out/
+release/
+
+# 临时文件
+*.tmp
+*.temp
+.cache/
