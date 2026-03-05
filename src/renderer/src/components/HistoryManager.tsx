@@ -21,6 +21,11 @@ const HistoryManager: React.FC = () => {
   const loadHistory = async () => {
     setLoading(true);
     try {
+      if (!window.electronAPI) {
+        console.error('Electron API 未就绪，请等待应用初始化');
+        setHistory([]);
+        return;
+      }
       const data = await window.electronAPI.getHistory();
       setHistory(data);
     } catch (error) {

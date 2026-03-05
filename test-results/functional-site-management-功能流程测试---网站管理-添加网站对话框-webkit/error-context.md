@@ -1,0 +1,103 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - heading "AI问答对比工具" [level=3] [ref=e5]
+      - generic [ref=e8]: 已启用 0 个AI网站
+    - generic [ref=e9]:
+      - complementary [ref=e10]:
+        - menu [ref=e12]:
+          - menuitem "question-circle 提问对比" [ref=e13] [cursor=pointer]:
+            - img "question-circle" [ref=e14]:
+              - img [ref=e15]
+            - generic [ref=e18]: 提问对比
+          - menuitem "history 历史记录" [ref=e19] [cursor=pointer]:
+            - img "history" [ref=e20]:
+              - img [ref=e21]
+            - generic [ref=e23]: 历史记录
+          - menuitem "setting 网站管理" [ref=e24] [cursor=pointer]:
+            - img "setting" [ref=e25]:
+              - img [ref=e26]
+            - generic [ref=e28]: 网站管理
+          - menuitem "api API配置" [ref=e29] [cursor=pointer]:
+            - img "api" [ref=e30]:
+              - img [ref=e31]
+            - generic [ref=e33]: API配置
+      - main [ref=e34]:
+        - generic [ref=e35]:
+          - generic [ref=e36]:
+            - generic [ref=e37]:
+              - heading "AI网站管理" [level=2] [ref=e38]
+              - generic [ref=e39]: 已配置 0 个网站，0 个已启用
+            - generic [ref=e40]:
+              - button "star 推荐配置" [ref=e42] [cursor=pointer]:
+                - img "star" [ref=e44]:
+                  - img [ref=e45]
+                - generic [ref=e47]: 推荐配置
+              - button "plus 添加网站" [ref=e49] [cursor=pointer]:
+                - img "plus" [ref=e51]:
+                  - img [ref=e52]
+                - generic [ref=e55]: 添加网站
+          - table [ref=e62]:
+            - rowgroup [ref=e63]:
+              - row "名称 网址 状态 创建时间 操作" [ref=e64]:
+                - columnheader "名称" [ref=e65]
+                - columnheader "网址" [ref=e66]
+                - columnheader "状态" [ref=e67]
+                - columnheader "创建时间" [ref=e68]
+                - columnheader "操作" [ref=e69]
+            - rowgroup [ref=e70]:
+              - row "暂无数据 暂无数据" [ref=e71]:
+                - cell "暂无数据 暂无数据" [ref=e72]:
+                  - generic [ref=e73]:
+                    - img "暂无数据" [ref=e75]
+                    - generic [ref=e81]: 暂无数据
+  - generic:
+    - generic [ref=e83]:
+      - img "close-circle" [ref=e84]:
+        - img [ref=e85]
+      - generic [ref=e87]: 加载AI网站配置失败
+    - generic [ref=e89]:
+      - img "close-circle" [ref=e90]:
+        - img [ref=e91]
+      - generic [ref=e93]: 加载AI网站配置失败
+  - generic [ref=e94]:
+    - dialog "添加AI网站":
+      - generic [ref=e95]:
+        - button "Close" [ref=e96] [cursor=pointer]:
+          - generic "关闭" [ref=e97]:
+            - img "close" [ref=e98]:
+              - img [ref=e99]
+        - generic [ref=e102]: 添加AI网站
+        - generic [ref=e104]:
+          - generic [ref=e106]:
+            - generic "网站名称" [ref=e108]: "* 网站名称"
+            - textbox "* 网站名称" [ref=e112]:
+              - /placeholder: 如：DeepSeek
+          - generic [ref=e114]:
+            - generic "网站地址" [ref=e116]: "* 网站地址"
+            - textbox "* 网站地址" [ref=e120]:
+              - /placeholder: https://example.com
+          - generic [ref=e122]:
+            - generic "输入框选择器" [ref=e124]: "* 输入框选择器"
+            - textbox "* 输入框选择器" [ref=e128]:
+              - /placeholder: 如：textarea[placeholder*='输入']
+          - generic [ref=e130]:
+            - generic "提交按钮选择器" [ref=e132]: "* 提交按钮选择器"
+            - textbox "* 提交按钮选择器" [ref=e136]:
+              - /placeholder: 如：button[type='submit']
+          - generic [ref=e138]:
+            - generic "回答内容选择器" [ref=e140]: "* 回答内容选择器"
+            - textbox "* 回答内容选择器" [ref=e144]:
+              - /placeholder: 如：.message-content
+          - generic [ref=e146]:
+            - generic "启用状态" [ref=e148]
+            - switch "启用状态" [checked] [ref=e152] [cursor=pointer]
+        - generic [ref=e155]:
+          - button "取 消" [ref=e156] [cursor=pointer]:
+            - generic [ref=e157]: 取 消
+          - button "确 定" [ref=e158] [cursor=pointer]:
+            - generic [ref=e159]: 确 定
+```

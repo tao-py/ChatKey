@@ -50,6 +50,7 @@ export interface ChatRequest {
 
 // Electron API 接口定义
 export interface ElectronAPI {
+  test: () => string;
   getAiSites: () => Promise<AiSite[]>;
   saveAiSite: (site: AiSite) => Promise<void>;
   deleteAiSite: (siteId: number) => Promise<void>;
@@ -62,5 +63,21 @@ export interface ElectronAPI {
 declare global {
   interface Window {
     electronAPI: ElectronAPI;
+    __ELECTRON_API_READY__?: boolean;
+    __ELECTRON_API_ERROR__?: string;
+  }
+  
+  // 为全局对象添加类型定义
+  interface Global {
+    electronAPI?: ElectronAPI;
+    __ELECTRON_API_READY__?: boolean;
+    __ELECTRON_API_ERROR__?: string;
+  }
+  
+  // 确保 globalThis 也有这些属性
+  interface GlobalThis {
+    electronAPI?: ElectronAPI;
+    __ELECTRON_API_READY__?: boolean;
+    __ELECTRON_API_ERROR__?: string;
   }
 }

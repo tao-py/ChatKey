@@ -156,27 +156,49 @@ class DatabaseManager {
 
   // AI网站管理
   async getAiSites() {
-    const sites = await this.all('SELECT * FROM ai_sites ORDER BY created_at DESC');
-    return sites.map(site => ({
-      ...site,
-      config: site.config ? JSON.parse(site.config) : {}
-    }));
+    try {
+      const sites = await this.all('SELECT * FROM ai_sites ORDER BY created_at DESC');
+      return sites.map(site => {
+        let config = {};
+        if (site.config) {
+          try {
+            config = JSON.parse(site.config);
+          } catch (error) {
+            console.error('解析config JSON失败:', error, '原始config:', site.config);
+            config = {};
+          }
+        }
+        return {
+          ...site,
+          enabled: site.enabled === 1, // 将整数转换为布尔值
+          config
+        };
+      });
+    } catch (error) {
+      console.error('获取AI网站列表失败:', error);
+      return [];
+    }
   }
 
   async saveAiSite(siteData) {
     const { id, name, url, selector, input_selector, submit_selector, enabled, config } = siteData;
     
+    // 处理config字段，确保是有效的JSON字符串
+    const configStr = config ? JSON.stringify(config) : '{}';
+    // 将enabled布尔值转换为整数
+    const enabledInt = enabled ? 1 : 0;
+    
     if (id) {
       // 更新现有记录
       return await this.run(
         'UPDATE ai_sites SET name = ?, url = ?, selector = ?, input_selector = ?, submit_selector = ?, enabled = ?, config = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-        [name, url, selector, input_selector, submit_selector, enabled, JSON.stringify(config), id]
+        [name, url, selector, input_selector, submit_selector, enabledInt, configStr, id]
       );
     } else {
       // 插入新记录
       return await this.run(
         'INSERT INTO ai_sites (name, url, selector, input_selector, submit_selector, enabled, config) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [name, url, selector, input_selector, submit_selector, enabled, JSON.stringify(config)]
+        [name, url, selector, input_selector, submit_selector, enabledInt, configStr]
       );
     }
   }

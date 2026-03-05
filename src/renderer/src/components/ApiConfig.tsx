@@ -17,6 +17,11 @@ const ApiConfig: React.FC = () => {
   const loadConfig = async () => {
     setLoading(true);
     try {
+      if (!window.electronAPI) {
+        message.error('Electron API 未就绪，请等待应用初始化');
+        setConfig(null);
+        return;
+      }
       const data = await window.electronAPI.getApiConfig();
       setConfig(data);
     } catch (error) {
@@ -30,6 +35,10 @@ const ApiConfig: React.FC = () => {
   const handleSave = async (values: any) => {
     setSaving(true);
     try {
+      if (!window.electronAPI) {
+        message.error('Electron API 未就绪，请等待应用初始化');
+        return;
+      }
       await window.electronAPI.saveApiConfig(values);
       message.success('保存成功');
       loadConfig();
