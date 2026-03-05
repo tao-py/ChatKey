@@ -85,6 +85,24 @@ class DatabaseManager {
         submit_selector: 'button[type="submit"]',
         enabled: 1,
         config: JSON.stringify({ waitTime: 3000 })
+      },
+      {
+        name: '豆包',
+        url: 'https://www.doubao.com',
+        selector: '.message-content',
+        input_selector: 'textarea[placeholder*="输入"]',
+        submit_selector: 'button[type="submit"]',
+        enabled: 0, // 默认禁用，需要用户手动启用
+        config: JSON.stringify({ waitTime: 4000 })
+      },
+      {
+        name: '文心一言',
+        url: 'https://yiyan.baidu.com',
+        selector: '.message-content',
+        input_selector: 'textarea[placeholder*="输入"]',
+        submit_selector: 'button[type="submit"]',
+        enabled: 0, // 默认禁用，需要用户手动启用
+        config: JSON.stringify({ waitTime: 4000 })
       }
     ];
 

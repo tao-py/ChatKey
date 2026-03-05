@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Form, Input, Button, Switch, message, Space, Typography, Alert } from 'antd';
 import { CopyOutlined } from '@ant-design/icons';
-import { ApiConfig } from '../types';
+import { ApiConfig as ApiConfigType } from '../types';
 
 const { Paragraph, Text } = Typography;
 
 const ApiConfig: React.FC = () => {
-  const [config, setConfig] = useState<ApiConfig | null>(null);
+  const [config, setConfig] = useState<ApiConfigType | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -55,10 +55,10 @@ const ApiConfig: React.FC = () => {
   const handleCopyEndpoint = async () => {
     const endpoint = `http://localhost:${config?.port || 8080}/v1/chat/completions`;
     try {
-      await navigator.clipboard.writeText(endpoint);
-      message.success('API端点已复制到剪贴板');
+        await navigator.clipboard.writeText(endpoint);
+        message.success('API端点已复制到剪贴板');
     } catch (error) {
-      message.error('复制失败，请手动复制');
+        message.error('复制失败，请手动复制');
     }
   };
 

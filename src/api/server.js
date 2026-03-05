@@ -56,7 +56,7 @@ class ApiServer {
     this.app.get('/v1/models', this.handleModels.bind(this));
 
     // 错误处理
-    this.app.use((err, req, res, next) => {
+    this.app.use((err, req, res) => {
       console.error('API Error:', err);
       res.status(500).json({ 
         error: 'Internal server error',
@@ -67,7 +67,7 @@ class ApiServer {
 
   async handleChatCompletion(req, res) {
     try {
-      const { messages, model = 'ai-comparison', stream = false, max_tokens = 2048 } = req.body;
+      const { messages, model = 'ai-comparison', stream = false } = req.body;
 
       if (!messages || !Array.isArray(messages) || messages.length === 0) {
         return res.status(400).json({ error: 'Messages are required' });

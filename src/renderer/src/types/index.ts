@@ -47,3 +47,20 @@ export interface ChatRequest {
   stream?: boolean;
   max_tokens?: number;
 }
+
+// Electron API 接口定义
+export interface ElectronAPI {
+  getAiSites: () => Promise<AiSite[]>;
+  saveAiSite: (site: AiSite) => Promise<void>;
+  deleteAiSite: (siteId: number) => Promise<void>;
+  processQuestion: (question: string) => Promise<{answers: Answer[]}>;
+  getHistory: () => Promise<QaRecord[]>;
+  getApiConfig: () => Promise<ApiConfig>;
+  saveApiConfig: (config: Partial<ApiConfig>) => Promise<void>;
+}
+
+declare global {
+  interface Window {
+    electronAPI: ElectronAPI;
+  }
+}

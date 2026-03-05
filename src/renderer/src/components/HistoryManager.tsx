@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Modal, Typography, Tag, Space, Input } from 'antd';
+import { Table, Button, Modal, Typography, Tag, Input } from 'antd';
 import { EyeOutlined } from '@ant-design/icons';
 import { QaRecord } from '../types';
 import AnswerComparison from './AnswerComparison';

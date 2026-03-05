@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Layout, Menu, Card, Row, Col, Typography, Button, Space } from 'antd';
+import { Layout, Menu, Card, Row, Col, Typography, Space } from 'antd';
 import { 
   QuestionCircleOutlined, 
   HistoryOutlined, 
@@ -11,7 +11,7 @@ import AnswerComparison from './components/AnswerComparison';
 import SiteManager from './components/SiteManager';
 import HistoryManager from './components/HistoryManager';
 import ApiConfig from './components/ApiConfig';
-import { AiSite, QaRecord } from './types';
+import { AiSite } from './types';
 
 const { Header, Content, Sider } = Layout;
 const { Title } = Typography;
