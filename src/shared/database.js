@@ -1,69 +1,126 @@
-const sqlite3 = require('sqlite3').verbose();
-const path = require('path');
-const { app } = require('electron');
+const mysql = require('mysql2/promise');
 
 class DatabaseManager {
   constructor() {
-    this.db = null;
-    this.dbPath = path.join(app.getPath('userData'), 'ai-qa-comparison.db');
+    this.pool = null;
+    this.config = this.getDbConfig();
+  }
+
+  getDbConfig() {
+    // 从环境变量获取配置，支持开发和生产环境
+    const config = {
+      host: process.env.DB_HOST || 'localhost',
+      port: parseInt(process.env.DB_PORT) || 3306,
+      user: process.env.DB_USER || 'root',
+      password: process.env.DB_PASSWORD || 'password',
+      database: process.env.DB_NAME || 'ai_qa_comparison',
+      connectionLimit: parseInt(process.env.DB_CONNECTION_LIMIT) || 10,
+      waitForConnections: true,
+      queueLimit: 0,
+      enableKeepAlive: true,
+      keepAliveInitialDelay: 0
+    };
+    
+    console.log('MySQL配置:', { 
+      ...config, 
+      password: config.password ? '***' : 'empty' 
+    });
+    
+    return config;
   }
 
   async init() {
-    return new Promise((resolve, reject) => {
-      this.db = new sqlite3.Database(this.dbPath, (err) => {
-        if (err) {
-          console.error('数据库连接失败:', err);
-          reject(err);
-        } else {
-          console.log('数据库连接成功');
-          this.createTables().then(resolve).catch(reject);
-        }
-      });
-    });
+    try {
+      // 创建连接池
+      this.pool = mysql.createPool(this.config);
+      
+      // 测试连接
+      const connection = await this.pool.getConnection();
+      console.log('MySQL数据库连接成功');
+      connection.release();
+      
+      // 创建数据库（如果不存在）
+      await this.createDatabaseIfNotExists();
+      
+      // 创建表
+      await this.createTables();
+      
+      // 插入默认数据
+      await this.insertDefaultSites();
+      
+      return true;
+    } catch (error) {
+      console.error('MySQL数据库初始化失败:', error);
+      throw error;
+    }
+  }
+
+  async createDatabaseIfNotExists() {
+    // 创建数据库连接（不带数据库名）
+    const tempConfig = { ...this.config };
+    delete tempConfig.database;
+    const tempPool = mysql.createPool(tempConfig);
+    
+    try {
+      await tempPool.execute(
+        `CREATE DATABASE IF NOT EXISTS \`${this.config.database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
+      );
+      console.log(`数据库 ${this.config.database} 已就绪`);
+    } finally {
+      await tempPool.end();
+    }
   }
 
   async createTables() {
     const tables = [
       // AI网站配置表
       `CREATE TABLE IF NOT EXISTS ai_sites (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        url TEXT NOT NULL,
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        url VARCHAR(500) NOT NULL,
         selector TEXT NOT NULL,
         input_selector TEXT NOT NULL,
         submit_selector TEXT NOT NULL,
-        enabled BOOLEAN DEFAULT 1,
-        config TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )`,
+        enabled TINYINT(1) DEFAULT 1,
+        config LONGTEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_enabled (enabled),
+        INDEX idx_created_at (created_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
       
       // 问答记录表
       `CREATE TABLE IF NOT EXISTS qa_records (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id INT AUTO_INCREMENT PRIMARY KEY,
         question TEXT NOT NULL,
-        answers TEXT NOT NULL,
-        status TEXT DEFAULT 'completed',
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )`,
+        answers LONGTEXT NOT NULL,
+        status VARCHAR(50) DEFAULT 'completed',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_status (status),
+        INDEX idx_created_at (created_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
       
       // API配置表
       `CREATE TABLE IF NOT EXISTS api_config (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        api_key TEXT UNIQUE,
-        port INTEGER DEFAULT 8080,
-        enabled BOOLEAN DEFAULT 1,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )`
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        api_key VARCHAR(100) UNIQUE,
+        port INT DEFAULT 8080,
+        enabled TINYINT(1) DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_enabled (enabled)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
     ];
 
     for (const tableSql of tables) {
-      await this.run(tableSql);
+      try {
+        await this.execute(tableSql);
+        console.log(`表创建成功: ${tableSql.split(' ')[2]}`);
+      } catch (error) {
+        console.error(`创建表失败:`, error.message);
+        throw error;
+      }
     }
-
-    // 插入默认AI网站配置
-    await this.insertDefaultSites();
   }
 
   async insertDefaultSites() {
@@ -107,51 +164,53 @@ class DatabaseManager {
     ];
 
     for (const site of defaultSites) {
-      const exists = await this.get('SELECT id FROM ai_sites WHERE name = ?', [site.name]);
-      if (!exists) {
-        await this.run(
-          'INSERT INTO ai_sites (name, url, selector, input_selector, submit_selector, enabled, config) VALUES (?, ?, ?, ?, ?, ?, ?)',
-          [site.name, site.url, site.selector, site.input_selector, site.submit_selector, site.enabled, site.config]
-        );
+      try {
+        const rows = await this.execute('SELECT id FROM ai_sites WHERE name = ?', [site.name]);
+        if (rows.length === 0) {
+          await this.execute(
+            'INSERT INTO ai_sites (name, url, selector, input_selector, submit_selector, enabled, config) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [site.name, site.url, site.selector, site.input_selector, site.submit_selector, site.enabled, site.config]
+          );
+          console.log(`已插入默认网站: ${site.name}`);
+        }
+      } catch (error) {
+        console.error(`插入默认网站 ${site.name} 失败:`, error);
       }
     }
   }
 
   // 基础数据库操作方法
+  async execute(sql, params = []) {
+    if (!this.pool) {
+      throw new Error('数据库连接池未初始化');
+    }
+    
+    try {
+      const [rows] = await this.pool.execute(sql, params);
+      return rows;
+    } catch (error) {
+      console.error('数据库执行错误:', { sql, params, error: error.message });
+      throw error;
+    }
+  }
+
   async run(sql, params = []) {
-    return new Promise((resolve, reject) => {
-      this.db.run(sql, params, function(err) {
-        if (err) {
-          reject(err);
-        } else {
-          resolve({ id: this.lastID, changes: this.changes });
-        }
-      });
-    });
+    const rows = await this.execute(sql, params);
+    return {
+      id: rows.insertId,
+      changes: rows.affectedRows,
+      rows: rows
+    };
   }
 
   async get(sql, params = []) {
-    return new Promise((resolve, reject) => {
-      this.db.get(sql, params, (err, row) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve(row);
-        }
-      });
-    });
+    const rows = await this.execute(sql, params);
+    return rows.length > 0 ? rows[0] : null;
   }
 
   async all(sql, params = []) {
-    return new Promise((resolve, reject) => {
-      this.db.all(sql, params, (err, rows) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve(rows);
-        }
-      });
-    });
+    const rows = await this.execute(sql, params);
+    return rows;
   }
 
   // AI网站管理
@@ -191,7 +250,7 @@ class DatabaseManager {
     if (id) {
       // 更新现有记录
       return await this.run(
-        'UPDATE ai_sites SET name = ?, url = ?, selector = ?, input_selector = ?, submit_selector = ?, enabled = ?, config = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+        'UPDATE ai_sites SET name = ?, url = ?, selector = ?, input_selector = ?, submit_selector = ?, enabled = ?, config = ? WHERE id = ?',
         [name, url, selector, input_selector, submit_selector, enabledInt, configStr, id]
       );
     } else {
@@ -209,11 +268,16 @@ class DatabaseManager {
 
   // 问答记录管理
   async getHistory() {
-    const records = await this.all('SELECT * FROM qa_records ORDER BY created_at DESC LIMIT 100');
-    return records.map(record => ({
-      ...record,
-      answers: JSON.parse(record.answers)
-    }));
+    try {
+      const records = await this.all('SELECT * FROM qa_records ORDER BY created_at DESC LIMIT 100');
+      return records.map(record => ({
+        ...record,
+        answers: JSON.parse(record.answers)
+      }));
+    } catch (error) {
+      console.error('获取历史记录失败:', error);
+      return [];
+    }
   }
 
   async saveQaRecord(record) {
@@ -226,14 +290,24 @@ class DatabaseManager {
 
   // API配置管理
   async getApiConfig() {
-    let config = await this.get('SELECT * FROM api_config ORDER BY id DESC LIMIT 1');
-    if (!config) {
-      // 创建默认配置
-      const defaultKey = this.generateApiKey();
-      await this.run('INSERT INTO api_config (api_key, port, enabled) VALUES (?, 8080, 1)', [defaultKey]);
-      config = await this.get('SELECT * FROM api_config ORDER BY id DESC LIMIT 1');
+    try {
+      let config = await this.get('SELECT * FROM api_config ORDER BY id DESC LIMIT 1');
+      if (!config) {
+        // 创建默认配置
+        const defaultKey = this.generateApiKey();
+        await this.run('INSERT INTO api_config (api_key, port, enabled) VALUES (?, 8080, 1)', [defaultKey]);
+        config = await this.get('SELECT * FROM api_config ORDER BY id DESC LIMIT 1');
+      }
+      return config;
+    } catch (error) {
+      console.error('获取API配置失败:', error);
+      // 返回默认配置
+      return {
+        api_key: this.generateApiKey(),
+        port: 8080,
+        enabled: 1
+      };
     }
-    return config;
   }
 
   async saveApiConfig(config) {
@@ -242,7 +316,7 @@ class DatabaseManager {
     
     if (existing) {
       return await this.run(
-        'UPDATE api_config SET api_key = ?, port = ?, enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+        'UPDATE api_config SET api_key = ?, port = ?, enabled = ? WHERE id = ?',
         [api_key, port, enabled, existing.id]
       );
     } else {
@@ -258,15 +332,10 @@ class DatabaseManager {
     return 'ak-' + crypto.randomBytes(16).toString('hex');
   }
 
-  close() {
-    if (this.db) {
-      this.db.close((err) => {
-        if (err) {
-          console.error('数据库关闭失败:', err);
-        } else {
-          console.log('数据库连接已关闭');
-        }
-      });
+  async close() {
+    if (this.pool) {
+      await this.pool.end();
+      console.log('MySQL连接池已关闭');
     }
   }
 }

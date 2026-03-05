@@ -1,5 +1,7 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
+// 加载环境变量
+require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
 const { startApiServer } = require('../api/server');
 const { DatabaseManager } = require('../shared/database');
 const { QuestionProcessor } = require('./question-processor');

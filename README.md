@@ -26,8 +26,9 @@
 - **前端**: React 18 + TypeScript + Ant Design
 - **桌面框架**: Electron 27
 - **浏览器自动化**: Puppeteer 21
-- **数据库**: SQLite 5
+- **数据库**: MySQL 8 + mysql2（连接池管理）
 - **API服务**: Express.js 4
+- **环境管理**: dotenv
 - **构建工具**: Webpack + electron-builder
 
 ### 架构设计
@@ -42,6 +43,7 @@
 - Node.js 16.0 或更高版本
 - npm 或 yarn 包管理器
 - Windows 10 / macOS 10.14 / Ubuntu 18.04 或更高版本
+- MySQL 5.7+ 或 MariaDB 10.3+（或使用Docker容器）
 
 ### 安装步骤
 
@@ -62,13 +64,31 @@ npm install
 cd ../..
 ```
 
-3. **启动开发环境**
+3. **配置数据库**
+```bash
+# 方式一：使用Docker快速启动MySQL（推荐）
+docker run --name mysql-ai-qa \
+  -e MYSQL_ROOT_PASSWORD=password \
+  -e MYSQL_DATABASE=ai_qa_comparison \
+  -p 3306:3306 \
+  -d mysql:8
+
+# 方式二：使用已有MySQL服务
+# 创建数据库（如果不存在）
+mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS ai_qa_comparison CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+
+# 复制环境变量配置
+cp .env.example .env
+# 编辑.env文件，配置数据库连接信息
+```
+
+4. **启动开发环境**
 ```bash
 # 启动开发环境（同时启动React开发服务器和Electron）
 npm run dev
 ```
 
-4. **构建生产版本**
+5. **构建生产版本**
 ```bash
 # 构建前端
 npm run build
@@ -104,7 +124,7 @@ src/
 │   │   └── index.tsx       # 前端入口
 │   └── public/             # 静态资源
 ├── shared/                 # 共享模块
-│   └── database.js         # SQLite数据库管理
+│   └── database.js         # MySQL数据库管理器（连接池）
 ├── api/                    # API服务
 │   └── server.js           # Express服务器
 └── test/                   # 测试文件
@@ -297,7 +317,8 @@ MIT License - 详见 [LICENSE](LICENSE) 文件
 - [React](https://reactjs.org/) - 用户界面库
 - [Puppeteer](https://pptr.dev/) - 浏览器自动化
 - [Ant Design](https://ant.design/) - UI组件库
-- [SQLite](https://sqlite.org/) - 轻量级数据库
+- [MySQL](https://mysql.com/) - 关系型数据库
+- [mysql2](https://github.com/sidorares/node-mysql2) - Node.js MySQL客户端
 
 ---
 
