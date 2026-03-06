@@ -3,7 +3,9 @@ const mysql = require('mysql2/promise');
 class DatabaseManager {
   constructor() {
     this.pool = null;
+    this.db = null; // 用于SQLite
     this.config = this.getDbConfig();
+    this.type = process.env.DB_TYPE || 'mysql'; // 添加数据库类型判断
   }
 
   getDbConfig() {
@@ -12,7 +14,7 @@ class DatabaseManager {
       host: process.env.DB_HOST || 'localhost',
       port: parseInt(process.env.DB_PORT) || 3306,
       user: process.env.DB_USER || 'root',
-      password: process.env.DB_PASSWORD || 'password',
+      password: process.env.DB_PASSWORD || '',
       database: process.env.DB_NAME || 'ai_qa_comparison',
       connectionLimit: parseInt(process.env.DB_CONNECTION_LIMIT) || 10,
       waitForConnections: true,
@@ -21,15 +23,55 @@ class DatabaseManager {
       keepAliveInitialDelay: 0
     };
     
-    console.log('MySQL配置:', { 
+    console.log('数据库配置:', { 
       ...config, 
-      password: config.password ? '***' : 'empty' 
+      password: config.password ? '***' : 'empty',
+      type: process.env.DB_TYPE || 'mysql'
     });
     
     return config;
   }
 
   async init() {
+    try {
+      if (this.type === 'sqlite') {
+        return await this.initSQLite();
+      } else {
+        return await this.initMySQL();
+      }
+    } catch (error) {
+      console.error(`${this.type.toUpperCase()}数据库初始化失败:`, error);
+      throw error;
+    }
+  }
+
+  async initSQLite() {
+    // 动态导入SQLite相关模块
+    const sqlite3 = require('sqlite3');
+    const { open } = require('sqlite');
+    
+    try {
+      // 打开SQLite数据库
+      this.db = await open({
+        filename: process.env.DB_PATH || './data.db',
+        driver: sqlite3.Database
+      });
+
+      // 创建表
+      await this.createSQLiteTables();
+
+      // 插入默认数据
+      await this.insertDefaultSites();
+
+      console.log('SQLite数据库连接成功');
+      return true;
+    } catch (error) {
+      console.error('SQLite数据库初始化失败:', error);
+      throw error;
+    }
+  }
+
+  async initMySQL() {
     try {
       // 创建连接池
       this.pool = mysql.createPool(this.config);
@@ -68,6 +110,57 @@ class DatabaseManager {
       console.log(`数据库 ${this.config.database} 已就绪`);
     } finally {
       await tempPool.end();
+    }
+  }
+
+  async createSQLiteTables() {
+    // 动态导入SQLite相关模块
+    const sqlite3 = require('sqlite3');
+    const { open } = require('sqlite');
+    
+    const tables = [
+      // AI网站配置表
+      `CREATE TABLE IF NOT EXISTS ai_sites (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        url TEXT NOT NULL,
+        selector TEXT NOT NULL,
+        input_selector TEXT NOT NULL,
+        submit_selector TEXT NOT NULL,
+        enabled INTEGER DEFAULT 1,
+        config TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`,
+      
+      // 问答记录表
+      `CREATE TABLE IF NOT EXISTS qa_records (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        question TEXT NOT NULL,
+        answers TEXT NOT NULL,
+        status TEXT DEFAULT 'completed',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`,
+      
+      // API配置表
+      `CREATE TABLE IF NOT EXISTS api_config (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        api_key TEXT UNIQUE,
+        port INTEGER DEFAULT 8080,
+        enabled INTEGER DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`
+    ];
+
+    for (const tableSql of tables) {
+      try {
+        await this.db.exec(tableSql);
+        console.log(`SQLite表创建成功: ${tableSql.split(' ')[2]}`);
+      } catch (error) {
+        console.error(`创建SQLite表失败:`, error.message);
+        throw error;
+      }
     }
   }
 
@@ -165,13 +258,24 @@ class DatabaseManager {
 
     for (const site of defaultSites) {
       try {
-        const rows = await this.execute('SELECT id FROM ai_sites WHERE name = ?', [site.name]);
-        if (rows.length === 0) {
-          await this.execute(
-            'INSERT INTO ai_sites (name, url, selector, input_selector, submit_selector, enabled, config) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [site.name, site.url, site.selector, site.input_selector, site.submit_selector, site.enabled, site.config]
-          );
-          console.log(`已插入默认网站: ${site.name}`);
+        if (this.type === 'sqlite') {
+          const rows = await this.db.all('SELECT id FROM ai_sites WHERE name = ?', [site.name]);
+          if (rows.length === 0) {
+            await this.db.run(
+              'INSERT INTO ai_sites (name, url, selector, input_selector, submit_selector, enabled, config) VALUES (?, ?, ?, ?, ?, ?, ?)',
+              [site.name, site.url, site.selector, site.input_selector, site.submit_selector, site.enabled, site.config]
+            );
+            console.log(`已插入默认网站: ${site.name}`);
+          }
+        } else {
+          const rows = await this.execute('SELECT id FROM ai_sites WHERE name = ?', [site.name]);
+          if (rows.length === 0) {
+            await this.execute(
+              'INSERT INTO ai_sites (name, url, selector, input_selector, submit_selector, enabled, config) VALUES (?, ?, ?, ?, ?, ?, ?)',
+              [site.name, site.url, site.selector, site.input_selector, site.submit_selector, site.enabled, site.config]
+            );
+            console.log(`已插入默认网站: ${site.name}`);
+          }
         }
       } catch (error) {
         console.error(`插入默认网站 ${site.name} 失败:`, error);
@@ -181,36 +285,84 @@ class DatabaseManager {
 
   // 基础数据库操作方法
   async execute(sql, params = []) {
-    if (!this.pool) {
-      throw new Error('数据库连接池未初始化');
-    }
-    
-    try {
-      const [rows] = await this.pool.execute(sql, params);
-      return rows;
-    } catch (error) {
-      console.error('数据库执行错误:', { sql, params, error: error.message });
-      throw error;
+    if (this.type === 'sqlite') {
+      // 动态导入SQLite相关模块
+      const sqlite3 = require('sqlite3');
+      const { open } = require('sqlite');
+      
+      // SQLite 操作
+      if (sql.trim().toUpperCase().startsWith('SELECT')) {
+        return await this.db.all(sql, params);
+      } else {
+        const result = await this.db.run(sql, params);
+        return {
+          insertId: result.lastID,
+          affectedRows: result.changes
+        };
+      }
+    } else {
+      // MySQL 操作
+      if (!this.pool) {
+        throw new Error('数据库连接池未初始化');
+      }
+      
+      try {
+        const [rows] = await this.pool.execute(sql, params);
+        return rows;
+      } catch (error) {
+        console.error('数据库执行错误:', { sql, params, error: error.message });
+        throw error;
+      }
     }
   }
 
   async run(sql, params = []) {
-    const rows = await this.execute(sql, params);
-    return {
-      id: rows.insertId,
-      changes: rows.affectedRows,
-      rows: rows
-    };
+    if (this.type === 'sqlite') {
+      // 动态导入SQLite相关模块
+      const sqlite3 = require('sqlite3');
+      const { open } = require('sqlite');
+      
+      const result = await this.db.run(sql, params);
+      return {
+        id: result.lastID,
+        changes: result.changes,
+        rows: result
+      };
+    } else {
+      const rows = await this.execute(sql, params);
+      return {
+        id: rows.insertId,
+        changes: rows.affectedRows,
+        rows: rows
+      };
+    }
   }
 
   async get(sql, params = []) {
-    const rows = await this.execute(sql, params);
-    return rows.length > 0 ? rows[0] : null;
+    let rows;
+    if (this.type === 'sqlite') {
+      // 动态导入SQLite相关模块
+      const sqlite3 = require('sqlite3');
+      const { open } = require('sqlite');
+      
+      rows = await this.db.get(sql, params);
+    } else {
+      rows = await this.execute(sql, params);
+      return rows.length > 0 ? rows[0] : null;
+    }
+    return rows;
   }
 
   async all(sql, params = []) {
-    const rows = await this.execute(sql, params);
-    return rows;
+    if (this.type === 'sqlite') {
+      // 动态导入SQLite相关模块
+      const sqlite3 = require('sqlite3');
+      const { open } = require('sqlite');
+      
+      return await this.db.all(sql, params);
+    } else {
+      return await this.execute(sql, params);
+    }
   }
 
   // AI网站管理
@@ -229,7 +381,7 @@ class DatabaseManager {
         }
         return {
           ...site,
-          enabled: site.enabled === 1, // 将整数转换为布尔值
+          enabled: Boolean(site.enabled), // 将数字转换为布尔值
           config
         };
       });
@@ -333,7 +485,10 @@ class DatabaseManager {
   }
 
   async close() {
-    if (this.pool) {
+    if (this.type === 'sqlite' && this.db) {
+      await this.db.close();
+      console.log('SQLite数据库已关闭');
+    } else if (this.pool) {
       await this.pool.end();
       console.log('MySQL连接池已关闭');
     }

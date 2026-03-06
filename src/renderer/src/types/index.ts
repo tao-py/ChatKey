@@ -60,24 +60,18 @@ export interface ElectronAPI {
   saveApiConfig: (config: Partial<ApiConfig>) => Promise<void>;
 }
 
+// 为 Node.js 全局对象扩展类型
 declare global {
   interface Window {
     electronAPI: ElectronAPI;
     __ELECTRON_API_READY__?: boolean;
     __ELECTRON_API_ERROR__?: string;
   }
-  
-  // 为全局对象添加类型定义
-  interface Global {
-    electronAPI?: ElectronAPI;
-    __ELECTRON_API_READY__?: boolean;
-    __ELECTRON_API_ERROR__?: string;
-  }
-  
-  // 确保 globalThis 也有这些属性
-  interface GlobalThis {
-    electronAPI?: ElectronAPI;
-    __ELECTRON_API_READY__?: boolean;
-    __ELECTRON_API_ERROR__?: string;
-  }
+
+  var electronAPI: ElectronAPI | undefined;
+  var __ELECTRON_API_READY__: boolean | undefined;
+  var __ELECTRON_API_ERROR__: string | undefined;
 }
+
+// 确保这是一个模块
+export {};

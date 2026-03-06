@@ -30,8 +30,9 @@ function App() {
   useEffect(() => {
     const checkApiReady = () => {
       // 检查全局对象 (在某些配置下，预加载脚本可能将API放在global上)
-      // @ts-ignore - global 可能不存在于类型定义中
-      const globalObj = typeof globalThis !== 'undefined' ? globalThis : (typeof global !== 'undefined' ? global : window);
+      const globalObj = typeof globalThis !== 'undefined' 
+        ? globalThis 
+        : (typeof global !== 'undefined' ? global : window);
       
       // 检查各种可能的API可用性指标
       // 1. 通过 window.electronAPI (contextBridge)
@@ -41,9 +42,9 @@ function App() {
       const apiReadyFlag = window.__ELECTRON_API_READY__ === true;
       const apiError = window.__ELECTRON_API_ERROR__;
       
-      const hasGlobalElectronAPI = globalObj.electronAPI !== undefined;
-      const globalApiReadyFlag = globalObj.__ELECTRON_API_READY__ === true;
-      const globalApiError = globalObj.__ELECTRON_API_ERROR__;
+      const hasGlobalElectronAPI = (globalObj as any).electronAPI !== undefined;
+      const globalApiReadyFlag = (globalObj as any).__ELECTRON_API_READY__ === true;
+      const globalApiError = (globalObj as any).__ELECTRON_API_ERROR__;
       
       console.log('检查 Electron API 状态:', {
         windowElectronAPI: hasElectronAPI,
@@ -68,12 +69,11 @@ function App() {
       if (isReady) {
         // 确定使用哪个API对象
         let apiObj = window.electronAPI;
-        if (!apiObj && global.electronAPI) {
-          apiObj = global.electronAPI;
+        if (!apiObj && (global as any).electronAPI) {
+          apiObj = (global as any).electronAPI;
           // 复制到 window 以便后续使用
           if (typeof window !== 'undefined') {
-            // @ts-ignore
-            window.electronAPI = apiObj;
+            (window as any).electronAPI = apiObj;
           }
         }
         
@@ -231,8 +231,7 @@ function App() {
   if (!apiReady) {
     if (apiError) {
       // 检查全局对象
-      // @ts-ignore
-      const global = typeof globalThis !== 'undefined' ? globalThis : (typeof global !== 'undefined' ? global : window);
+      const globalObj = typeof globalThis !== 'undefined' ? globalThis : (typeof global !== 'undefined' ? global : window);
       
       const diagnosticInfo = {
         window: {
@@ -241,9 +240,9 @@ function App() {
           __ELECTRON_API_ERROR__: window.__ELECTRON_API_ERROR__
         },
         global: {
-          electronAPI: global.electronAPI !== undefined,
-          __ELECTRON_API_READY__: global.__ELECTRON_API_READY__,
-          __ELECTRON_API_ERROR__: global.__ELECTRON_API_ERROR__
+          electronAPI: (globalObj as any).electronAPI !== undefined,
+          __ELECTRON_API_READY__: (globalObj as any).__ELECTRON_API_READY__,
+          __ELECTRON_API_ERROR__: (globalObj as any).__ELECTRON_API_ERROR__
         },
         environment: {
           userAgent: navigator.userAgent,
@@ -259,11 +258,11 @@ function App() {
           <h2 style={{ color: '#ff4d4f', marginBottom: 16 }}>应用初始化失败</h2>
           <p style={{ marginBottom: 16 }}>无法连接到 Electron API，请重启应用或检查预加载脚本。</p>
           
-          {(window.__ELECTRON_API_ERROR__ || global.__ELECTRON_API_ERROR__) && (
+          {(window.__ELECTRON_API_ERROR__ || (globalObj as any).__ELECTRON_API_ERROR__) && (
             <div style={{ background: '#fff2f0', border: '1px solid #ffccc7', padding: '16px', borderRadius: '4px', marginBottom: 16, maxWidth: '600px' }}>
               <h4 style={{ color: '#cf1322', marginTop: 0 }}>错误详情</h4>
               <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                {window.__ELECTRON_API_ERROR__ || global.__ELECTRON_API_ERROR__}
+                {window.__ELECTRON_API_ERROR__ || (globalObj as any).__ELECTRON_API_ERROR__}
               </pre>
             </div>
           )}
@@ -292,7 +291,7 @@ function App() {
             <Button onClick={() => {
               console.log('详细诊断信息:', diagnosticInfo);
               console.log('window对象:', window);
-              console.log('global对象:', global);
+              console.log('global对象:', globalObj);
               alert('详细诊断信息已输出到控制台，请打开开发者工具(F12)查看。');
             }}>输出详细诊断信息</Button>
           </div>
