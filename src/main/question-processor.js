@@ -4,9 +4,10 @@ const { Logger } = require('./logger');
 const { AnswerAdapter } = require('./answer-adapter');
 
 class QuestionProcessor {
-  constructor() {
+  constructor(dbManager = null) {
     this.automation = new BrowserAutomation();
-    this.dbManager = new DatabaseManager();
+    // 如果提供了数据库管理器实例，则使用它；否则创建新的实例
+    this.dbManager = dbManager || new DatabaseManager();
     this.logger = new Logger('QuestionProcessor');
   }
 
@@ -14,7 +15,7 @@ class QuestionProcessor {
     this.logger.info('Initializing QuestionProcessor');
     try {
       await this.automation.init();
-      await this.dbManager.init();
+      // 不在这里初始化dbManager，因为它可能已在别处初始化
       this.logger.info('QuestionProcessor initialized successfully');
     } catch (error) {
       this.logger.error('Failed to initialize QuestionProcessor:', error);
@@ -115,7 +116,7 @@ class QuestionProcessor {
     this.logger.info('Closing QuestionProcessor');
     try {
       await this.automation.close();
-      this.dbManager.close();
+      // 不关闭dbManager，因为它可能在其他地方使用
       this.logger.info('QuestionProcessor closed successfully');
     } catch (error) {
       this.logger.error('Error while closing QuestionProcessor:', error);

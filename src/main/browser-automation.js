@@ -1,5 +1,5 @@
 const puppeteer = require('puppeteer');
-const { DatabaseManager } = require('../shared/database');
+// 移除DatabaseManager的require，因为我们将通过构造函数传入
 const { Logger } = require('./logger');
 
 // 网站适配器类 - 处理不同网站的特殊交互逻辑
@@ -132,9 +132,10 @@ class SiteAdapter {
 }
 
 class BrowserAutomation {
-  constructor() {
+  constructor(dbManager = null) {
     this.browser = null;
-    this.dbManager = new DatabaseManager();
+    // 如果提供了数据库管理器实例，则使用它；否则创建新的实例
+    this.dbManager = dbManager || new (require('../shared/database').DatabaseManager)();
     this.logger = new Logger('BrowserAutomation');
     this.maxConcurrency = 3; // 最大并发数
     this.maxRetries = 3; // 最大重试次数
@@ -144,7 +145,7 @@ class BrowserAutomation {
   async init() {
     this.logger.info('Initializing BrowserAutomation');
     try {
-      await this.dbManager.init();
+      // 不在这里初始化dbManager，因为它可能已在别处初始化
       this.browser = await puppeteer.launch({
         headless: false, // 开发时设置为false方便调试
         defaultViewport: null,
@@ -357,8 +358,8 @@ class BrowserAutomation {
         await this.browser.close();
         this.logger.info('Browser closed successfully');
       }
-      this.dbManager.close();
-      this.logger.info('Database connection closed');
+      // 不关闭dbManager，因为它可能在其他地方使用
+      this.logger.info('BrowserAutomation closed successfully');
     } catch (error) {
       this.logger.error('Error while closing BrowserAutomation:', error);
       throw error;

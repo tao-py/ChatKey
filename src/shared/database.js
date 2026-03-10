@@ -1,11 +1,22 @@
 const mysql = require('mysql2/promise');
 
+// 全局数据库实例，用于确保整个应用中只有一个实例
+let globalInstance = null;
+
 class DatabaseManager {
   constructor() {
+    // 如果已经有全局实例，则返回该实例
+    if (globalInstance) {
+      return globalInstance;
+    }
+    
     this.pool = null;
     this.db = null; // 用于SQLite
     this.config = this.getDbConfig();
     this.type = process.env.DB_TYPE || 'mysql'; // 添加数据库类型判断
+    
+    // 设置全局实例
+    globalInstance = this;
   }
 
   getDbConfig() {
@@ -51,6 +62,12 @@ class DatabaseManager {
     const { open } = require('sqlite');
     
     try {
+      // 检查是否已经连接
+      if (this.db) {
+        console.log('SQLite数据库已连接');
+        return true;
+      }
+      
       // 打开SQLite数据库
       this.db = await open({
         filename: process.env.DB_PATH || './data.db',
@@ -73,6 +90,12 @@ class DatabaseManager {
 
   async initMySQL() {
     try {
+      // 检查是否已经连接
+      if (this.pool) {
+        console.log('MySQL数据库已连接');
+        return true;
+      }
+      
       // 创建连接池
       this.pool = mysql.createPool(this.config);
       
@@ -488,9 +511,11 @@ class DatabaseManager {
     if (this.type === 'sqlite' && this.db) {
       await this.db.close();
       console.log('SQLite数据库已关闭');
+      this.db = null;
     } else if (this.pool) {
       await this.pool.end();
       console.log('MySQL连接池已关闭');
+      this.pool = null;
     }
   }
 }
