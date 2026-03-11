@@ -1,5 +1,5 @@
 const puppeteer = require('puppeteer');
-// 移除DatabaseManager的require，因为我们将通过构造函数传入
+const { DatabaseManager } = require('../shared/database');
 const { Logger } = require('./logger');
 
 // 网站适配器类 - 处理不同网站的特殊交互逻辑
@@ -132,10 +132,9 @@ class SiteAdapter {
 }
 
 class BrowserAutomation {
-  constructor(dbManager = null) {
+  constructor() {
     this.browser = null;
-    // 如果提供了数据库管理器实例，则使用它；否则创建新的实例
-    this.dbManager = dbManager || new (require('../shared/database').DatabaseManager)();
+    this.dbManager = new DatabaseManager();
     this.logger = new Logger('BrowserAutomation');
     this.maxConcurrency = 3; // 最大并发数
     this.maxRetries = 3; // 最大重试次数
@@ -145,7 +144,7 @@ class BrowserAutomation {
   async init() {
     this.logger.info('Initializing BrowserAutomation');
     try {
-      // 不在这里初始化dbManager，因为它可能已在别处初始化
+      await this.dbManager.init();
       this.browser = await puppeteer.launch({
         headless: false, // 开发时设置为false方便调试
         defaultViewport: null,
@@ -182,7 +181,7 @@ class BrowserAutomation {
             answer: '',
             timestamp: new Date().toISOString(),
             status: 'failed',
-            error: error.message
+            error: typeof error.message === 'string' ? error.message : String(error)
           };
         }
         
@@ -334,12 +333,20 @@ class BrowserAutomation {
           // 处理被拒绝的情况（理论上不应该发生，因为重试机制已经处理了错误）
           const site = batch[index];
           this.logger.error(`Unexpected error for ${site.name}:`, result.reason);
+          let errorMessage = 'Unknown error';
+          if (result.reason) {
+            if (typeof result.reason === 'object' && result.reason.message) {
+              errorMessage = result.reason.message;
+            } else {
+              errorMessage = String(result.reason);
+            }
+          }
           results.push({
             site: site.name,
             answer: '',
             timestamp: new Date().toISOString(),
             status: 'failed',
-            error: result.reason?.message || 'Unknown error'
+            error: errorMessage
           });
         }
       });
@@ -358,8 +365,8 @@ class BrowserAutomation {
         await this.browser.close();
         this.logger.info('Browser closed successfully');
       }
-      // 不关闭dbManager，因为它可能在其他地方使用
-      this.logger.info('BrowserAutomation closed successfully');
+      this.dbManager.close();
+      this.logger.info('Database connection closed');
     } catch (error) {
       this.logger.error('Error while closing BrowserAutomation:', error);
       throw error;

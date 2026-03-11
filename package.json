@@ -6,7 +6,7 @@
   "scripts": {
     "start": "npm run dev",
     "dev": "concurrently \"npm run dev:renderer\" \"wait-on http://localhost:3001 && electron .\"",
-    "dev:renderer": "cd src/renderer && npx cross-env PORT=3001 npm start",
+    "dev:renderer": "cd src/renderer && set PORT=3001 && npm start",
     "build": "npm run build:renderer && npm run build:main",
     "build:renderer": "cd src/renderer && npm run build",
     "build:main": "echo 'Main build complete'",
@@ -29,7 +29,6 @@
     "@playwright/test": "^1.58.2",
     "@typescript-eslint/eslint-plugin": "^8.56.1",
     "concurrently": "^8.2.2",
-    "cross-env": "^7.0.3",
     "electron": "^27.0.0",
     "electron-builder": "^24.6.4",
     "eslint": "^8.50.0",

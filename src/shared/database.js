@@ -1,22 +1,11 @@
 const mysql = require('mysql2/promise');
 
-// 全局数据库实例，用于确保整个应用中只有一个实例
-let globalInstance = null;
-
 class DatabaseManager {
   constructor() {
-    // 如果已经有全局实例，则返回该实例
-    if (globalInstance) {
-      return globalInstance;
-    }
-    
     this.pool = null;
     this.db = null; // 用于SQLite
     this.config = this.getDbConfig();
     this.type = process.env.DB_TYPE || 'mysql'; // 添加数据库类型判断
-    
-    // 设置全局实例
-    globalInstance = this;
   }
 
   getDbConfig() {
@@ -90,12 +79,6 @@ class DatabaseManager {
 
   async initMySQL() {
     try {
-      // 检查是否已经连接
-      if (this.pool) {
-        console.log('MySQL数据库已连接');
-        return true;
-      }
-      
       // 创建连接池
       this.pool = mysql.createPool(this.config);
       
@@ -137,10 +120,6 @@ class DatabaseManager {
   }
 
   async createSQLiteTables() {
-    // 动态导入SQLite相关模块
-    const sqlite3 = require('sqlite3');
-    const { open } = require('sqlite');
-    
     const tables = [
       // AI网站配置表
       `CREATE TABLE IF NOT EXISTS ai_sites (
@@ -309,10 +288,6 @@ class DatabaseManager {
   // 基础数据库操作方法
   async execute(sql, params = []) {
     if (this.type === 'sqlite') {
-      // 动态导入SQLite相关模块
-      const sqlite3 = require('sqlite3');
-      const { open } = require('sqlite');
-      
       // SQLite 操作
       if (sql.trim().toUpperCase().startsWith('SELECT')) {
         return await this.db.all(sql, params);
@@ -341,10 +316,6 @@ class DatabaseManager {
 
   async run(sql, params = []) {
     if (this.type === 'sqlite') {
-      // 动态导入SQLite相关模块
-      const sqlite3 = require('sqlite3');
-      const { open } = require('sqlite');
-      
       const result = await this.db.run(sql, params);
       return {
         id: result.lastID,
@@ -352,36 +323,27 @@ class DatabaseManager {
         rows: result
       };
     } else {
-      const rows = await this.execute(sql, params);
+      // MySQL 情况下，execute 返回的是查询结果
+      const result = await this.execute(sql, params);
       return {
-        id: rows.insertId,
-        changes: rows.affectedRows,
-        rows: rows
+        id: result.insertId,
+        changes: result.affectedRows,
+        rows: result
       };
     }
   }
 
   async get(sql, params = []) {
-    let rows;
     if (this.type === 'sqlite') {
-      // 动态导入SQLite相关模块
-      const sqlite3 = require('sqlite3');
-      const { open } = require('sqlite');
-      
-      rows = await this.db.get(sql, params);
+      return await this.db.get(sql, params);
     } else {
-      rows = await this.execute(sql, params);
+      const rows = await this.execute(sql, params);
       return rows.length > 0 ? rows[0] : null;
     }
-    return rows;
   }
 
   async all(sql, params = []) {
     if (this.type === 'sqlite') {
-      // 动态导入SQLite相关模块
-      const sqlite3 = require('sqlite3');
-      const { open } = require('sqlite');
-      
       return await this.db.all(sql, params);
     } else {
       return await this.execute(sql, params);
@@ -457,9 +419,18 @@ class DatabaseManager {
 
   async saveQaRecord(record) {
     const { question, answers, status = 'completed' } = record;
+    let answersString;
+    try {
+      answersString = JSON.stringify(answers);
+    } catch (stringifyError) {
+      console.error('Failed to stringify answers:', stringifyError);
+      // 尝试清理answers中的循环引用或不可序列化的值
+      const safeAnswers = this.makeSerializable(answers);
+      answersString = JSON.stringify(safeAnswers);
+    }
     return await this.run(
       'INSERT INTO qa_records (question, answers, status) VALUES (?, ?, ?)',
-      [question, JSON.stringify(answers), status]
+      [question, answersString, status]
     );
   }
 
@@ -502,6 +473,45 @@ class DatabaseManager {
     }
   }
 
+  makeSerializable(obj) {
+    if (obj === null || typeof obj !== 'object') {
+      return obj;
+    }
+    
+    if (Array.isArray(obj)) {
+      return obj.map(item => this.makeSerializable(item));
+    }
+    
+    // 处理普通对象
+    const result = {};
+    for (const [key, value] of Object.entries(obj)) {
+      if (value instanceof Error) {
+        result[key] = {
+          message: value.message,
+          stack: value.stack,
+          name: value.name
+        };
+      } else if (value instanceof Date) {
+        result[key] = value.toISOString();
+      } else if (typeof value === 'function') {
+        result[key] = '[Function]';
+      } else if (typeof value === 'symbol') {
+        result[key] = value.toString();
+      } else if (value && typeof value === 'object') {
+        // 递归处理嵌套对象，避免无限循环
+        try {
+          JSON.stringify(value); // 测试是否可序列化
+          result[key] = this.makeSerializable(value);
+        } catch {
+          result[key] = '[Circular or non-serializable object]';
+        }
+      } else {
+        result[key] = value;
+      }
+    }
+    return result;
+  }
+
   generateApiKey() {
     const crypto = require('crypto');
     return 'ak-' + crypto.randomBytes(16).toString('hex');
@@ -511,11 +521,9 @@ class DatabaseManager {
     if (this.type === 'sqlite' && this.db) {
       await this.db.close();
       console.log('SQLite数据库已关闭');
-      this.db = null;
     } else if (this.pool) {
       await this.pool.end();
       console.log('MySQL连接池已关闭');
-      this.pool = null;
     }
   }
 }

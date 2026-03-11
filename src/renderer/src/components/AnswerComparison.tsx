@@ -83,11 +83,11 @@ const AnswerComparison: React.FC<AnswerComparisonProps> = ({
                 )
               }
             >
-              {answer.status === 'failed' ? (
-                <Paragraph type="danger">
-                  获取回答失败：{answer.error || '未知错误'}
-                </Paragraph>
-              ) : (
+               {answer.status === 'failed' ? (
+                 <Paragraph type="danger">
+                   获取回答失败：{typeof answer.error === 'string' ? answer.error : JSON.stringify(answer.error) || '未知错误'}
+                 </Paragraph>
+               ) : (
                 <Paragraph style={{ whiteSpace: 'pre-wrap' }}>
                   {answer.answer}
                 </Paragraph>

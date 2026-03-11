@@ -1,70 +1,73 @@
 // 预加载脚本 - 在渲染进程之前执行
-console.log('预加载脚本开始执行...');
-console.log('进程类型:', process.type);
-console.log('Node.js 版本:', process.version);
-console.log('Electron 版本:', process.versions.electron);
+// 重要：在沙箱环境中，不能直接使用 Node.js API 如 process.cwd()
 
-// 声明变量在外部作用域
+console.log('[PRELOAD] 预加载脚本开始执行');
+
+// 使用 contextBridge 安全地暴露 API 到渲染进程
 let contextBridge, ipcRenderer;
-
 try {
   const electron = require('electron');
   contextBridge = electron.contextBridge;
   ipcRenderer = electron.ipcRenderer;
-  console.log('Electron 模块加载成功');
-  console.log('contextBridge 可用:', !!contextBridge);
-  console.log('ipcRenderer 可用:', !!ipcRenderer);
-  
-  // 检查是否在正确的上下文中
-  if (!contextBridge) {
-    throw new Error('contextBridge 不可用，请确保启用了 contextIsolation');
+  console.log('[PRELOAD] Electron 模块加载成功');
+} catch (error) {
+  console.error('[PRELOAD] 加载 electron 模块失败:', error);
+  // 尝试通过 global.require 加载
+  try {
+    if (typeof globalThis.require !== 'undefined') {
+      const electron = globalThis.require('electron');
+      contextBridge = electron.contextBridge;
+      ipcRenderer = electron.ipcRenderer;
+      console.log('[PRELOAD] 通过 globalThis.require 加载成功');
+    }
+  } catch (e) {
+    console.error('[PRELOAD] 通过 globalThis.require 加载也失败:', e);
   }
-  
-  if (!ipcRenderer) {
-    throw new Error('ipcRenderer 不可用');
+}
+
+if (!contextBridge) {
+  console.error('[PRELOAD] 错误: contextBridge 未定义！');
+}
+if (!ipcRenderer) {
+  console.error('[PRELOAD] 错误: ipcRenderer 未定义！');
+}
+
+// 暴露安全的API给渲染进程
+if (!contextBridge) {
+  console.error('[PRELOAD] 致命错误: contextBridge 未定义，无法暴露API！');
+  // 尝试通过直接赋值暴露错误信息（仅在 contextIsolation 为 false 时有效）
+  try {
+    if (typeof window !== 'undefined') {
+      window.__ELECTRON_API_ERROR__ = 'contextBridge 未定义，预加载脚本配置错误';
+      console.log('[PRELOAD] 已设置 window.__ELECTRON_API_ERROR__');
+    }
+  } catch (e) {
+    console.error('[PRELOAD] 无法设置错误标志:', e);
   }
-  
-  // 暴露安全的API给渲染进程
+  // 提前退出，不执行后续代码
+  console.log('[PRELOAD] 预加载脚本终止执行');
+  return;
+}
+
+try {
   const api = {
     // 测试方法
     test: () => {
-      console.log('调用测试方法');
       return 'Electron API 测试成功';
     },
     
     // AI网站管理
-    getAiSites: () => {
-      console.log('调用 getAiSites');
-      return ipcRenderer.invoke('get-ai-sites');
-    },
-    saveAiSite: (siteData) => {
-      console.log('调用 saveAiSite:', siteData?.name || '未知');
-      return ipcRenderer.invoke('save-ai-site', siteData);
-    },
-    deleteAiSite: (siteId) => {
-      console.log('调用 deleteAiSite:', siteId);
-      return ipcRenderer.invoke('delete-ai-site', siteId);
-    },
+    getAiSites: () => ipcRenderer.invoke('get-ai-sites'),
+    saveAiSite: (siteData) => ipcRenderer.invoke('save-ai-site', siteData),
+    deleteAiSite: (siteId) => ipcRenderer.invoke('delete-ai-site', siteId),
     
     // 历史记录
-    getHistory: () => {
-      console.log('调用 getHistory');
-      return ipcRenderer.invoke('get-history');
-    },
-    saveQaRecord: (record) => {
-      console.log('调用 saveQaRecord:', record?.question?.substring(0, 50) || '未知');
-      return ipcRenderer.invoke('save-qa-record', record);
-    },
+    getHistory: () => ipcRenderer.invoke('get-history'),
+    saveQaRecord: (record) => ipcRenderer.invoke('save-qa-record', record),
     
     // API配置
-    getApiConfig: () => {
-      console.log('调用 getApiConfig');
-      return ipcRenderer.invoke('get-api-config');
-    },
-    saveApiConfig: (config) => {
-      console.log('调用 saveApiConfig');
-      return ipcRenderer.invoke('save-api-config', config);
-    },
+    getApiConfig: () => ipcRenderer.invoke('get-api-config'),
+    saveApiConfig: (config) => ipcRenderer.invoke('save-api-config', config),
     
     // 通用事件监听
     on: (channel, func) => {
@@ -74,41 +77,81 @@ try {
         'api-config-updated'
       ];
       if (validChannels.includes(channel)) {
-        console.log('注册监听器:', channel);
         ipcRenderer.on(channel, (event, ...args) => func(...args));
       }
     },
     
     removeListener: (channel, func) => {
-      console.log('移除监听器:', channel);
       ipcRenderer.removeListener(channel, func);
     },
     
     // 处理问题（集成浏览器自动化）
-    processQuestion: (question) => {
-      console.log('调用 processQuestion:', question?.substring(0, 50) || '未知');
-      return ipcRenderer.invoke('process-question', question);
-    }
+    processQuestion: (question) => ipcRenderer.invoke('process-question', question)
   };
   
-  contextBridge.exposeInMainWorld('electronAPI', api);
-  console.log('Electron API 已成功暴露到 window.electronAPI');
+  // 暴露API到渲染进程
+  const isContextIsolated = process.contextIsolated;
   
-  // 添加一个测试属性，用于验证API是否可用
-  contextBridge.exposeInMainWorld('__ELECTRON_API_READY__', true);
-  console.log('已设置 __ELECTRON_API_READY__ = true');
+  if (contextBridge) {
+    // 使用 contextBridge 安全地暴露 API
+    try {
+      contextBridge.exposeInMainWorld('electronAPI', api);
+      contextBridge.exposeInMainWorld('__ELECTRON_API_READY__', true);
+      console.log('[PRELOAD] Electron API 已通过 contextBridge 安全暴露');
+    } catch (error) {
+      console.error('[PRELOAD] 通过 contextBridge 暴露 API 失败:', error);
+      // 如果 contextBridge 失败但上下文隔离已禁用，回退到直接设置
+      if (!isContextIsolated && typeof window !== 'undefined') {
+        try {
+          window.electronAPI = api;
+          window.__ELECTRON_API_READY__ = true;
+          console.log('[PRELOAD] 已回退到直接设置 window.electronAPI');
+        } catch (fallbackError) {
+          console.error('[PRELOAD] 回退设置也失败:', fallbackError);
+        }
+      }
+    }
+  } else if (!isContextIsolated && typeof window !== 'undefined') {
+    // contextBridge 不存在但上下文隔离已禁用，直接设置
+    try {
+      window.electronAPI = api;
+      window.__ELECTRON_API_READY__ = true;
+      console.log('[PRELOAD] 已直接设置 window.electronAPI (上下文隔离已禁用)');
+    } catch (error) {
+      console.error('[PRELOAD] 直接设置 window 对象失败:', error);
+    }
+  } else {
+    console.error('[PRELOAD] 无法暴露 API: contextBridge 未定义且上下文隔离已启用');
+    // 尝试暴露错误信息
+    try {
+      if (typeof window !== 'undefined') {
+        window.__ELECTRON_API_ERROR__ = '预加载脚本配置错误，无法暴露 API';
+      }
+    } catch (e) {
+      console.error('[PRELOAD] 无法设置错误标志:', e);
+    }
+  }
+  
+  // 可选：测试 IPC 通信（静默进行）
+  if (ipcRenderer) {
+    ipcRenderer.invoke('test-connection').catch(() => {
+      // 静默失败
+    });
+  }
   
 } catch (error) {
-  console.error('预加载脚本执行失败:', error);
+  console.error('[PRELOAD] 预加载脚本执行失败:', error);
+  
   // 尝试将错误信息暴露给渲染进程
   try {
-    // 注意：如果 contextBridge 不可用，这可能会失败
-    if (typeof contextBridge !== 'undefined') {
+    if (contextBridge) {
       contextBridge.exposeInMainWorld('__ELECTRON_API_ERROR__', error.message);
+    } else if (typeof window !== 'undefined') {
+      window.__ELECTRON_API_ERROR__ = error.message;
     }
   } catch (e) {
-    console.error('无法暴露错误信息:', e);
+    console.error('[PRELOAD] 无法暴露错误信息:', e);
   }
 }
 
-console.log('预加载脚本执行完成');
+console.log('[PRELOAD] 预加载脚本执行完成');

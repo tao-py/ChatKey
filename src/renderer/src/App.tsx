@@ -28,97 +28,51 @@ function App() {
   const [apiError, setApiError] = useState(false);
 
   useEffect(() => {
-    const checkApiReady = () => {
-      // 检查全局对象 (在某些配置下，预加载脚本可能将API放在global上)
-      const globalObj = typeof globalThis !== 'undefined' 
-        ? globalThis 
-        : (typeof global !== 'undefined' ? global : window);
+    console.log('[RENDERER] 初始化应用，检查 Electron API...');
+    
+    // 检查API是否通过 contextBridge 暴露
+    const hasElectronAPI = window.electronAPI !== undefined;
+    const apiReadyFlag = window.__ELECTRON_API_READY__ === true;
+    const apiError = window.__ELECTRON_API_ERROR__;
+    
+    console.log('[RENDERER] API 状态:', {
+      electronAPI: hasElectronAPI,
+      readyFlag: apiReadyFlag,
+      error: apiError
+    });
+    
+    // 检查是否有错误
+    if (apiError) {
+      console.error('[RENDERER] Electron API 错误:', apiError);
+      setApiError(true);
+      return;
+    }
+    
+    // 检查是否就绪
+    const isReady = hasElectronAPI || apiReadyFlag;
+    
+    if (isReady) {
+      console.log('[RENDERER] Electron API 已就绪');
+      // 使用 window.electronAPI
+      const apiObj = window.electronAPI;
       
-      // 检查各种可能的API可用性指标
-      // 1. 通过 window.electronAPI (contextBridge)
-      // 2. 通过 window.__ELECTRON_API_READY__ 标志
-      // 3. 通过全局对象 (某些情况下预加载脚本可能使用 global)
-      const hasElectronAPI = window.electronAPI !== undefined;
-      const apiReadyFlag = window.__ELECTRON_API_READY__ === true;
-      const apiError = window.__ELECTRON_API_ERROR__;
-      
-      const hasGlobalElectronAPI = (globalObj as any).electronAPI !== undefined;
-      const globalApiReadyFlag = (globalObj as any).__ELECTRON_API_READY__ === true;
-      const globalApiError = (globalObj as any).__ELECTRON_API_ERROR__;
-      
-      console.log('检查 Electron API 状态:', {
-        windowElectronAPI: hasElectronAPI,
-        windowReadyFlag: apiReadyFlag,
-        windowError: apiError,
-        globalElectronAPI: hasGlobalElectronAPI,
-        globalReadyFlag: globalApiReadyFlag,
-        globalError: globalApiError
-      });
-      
-      // 检查是否有错误
-      const finalError = apiError || globalApiError;
-      if (finalError) {
-        console.error('Electron API 错误:', finalError);
-        setApiError(true);
-        return false;
+      // 如果 electronAPI 存在，尝试调用测试方法验证其功能
+      if (apiObj && apiObj.test) {
+        try {
+          const testResult = apiObj.test();
+          console.log('[RENDERER] Electron API 测试成功:', testResult);
+        } catch (error) {
+          console.error('[RENDERER] Electron API 测试失败:', error);
+          // 即使测试失败，仍然视为可用，但记录错误
+        }
       }
       
-      // 检查是否就绪
-      const isReady = hasElectronAPI || apiReadyFlag || hasGlobalElectronAPI || globalApiReadyFlag;
-      
-      if (isReady) {
-        // 确定使用哪个API对象
-        let apiObj = window.electronAPI;
-        if (!apiObj && (global as any).electronAPI) {
-          apiObj = (global as any).electronAPI;
-          // 复制到 window 以便后续使用
-          if (typeof window !== 'undefined') {
-            (window as any).electronAPI = apiObj;
-          }
-        }
-        
-        // 如果 electronAPI 存在，尝试调用测试方法验证其功能
-        if (apiObj && apiObj.test) {
-          try {
-            const testResult = apiObj.test();
-            console.log('Electron API 测试结果:', testResult);
-          } catch (error) {
-            console.error('Electron API 测试失败:', error);
-            // 即使有 electronAPI，但测试失败，仍然视为可用吗？
-            // 暂时继续，但记录错误
-          }
-        }
-        
-        setApiReady(true);
-        setApiError(false);
-        loadAiSites();
-        return true;
-      }
-      return false;
-    };
-
-    // 立即检查一次
-    if (!checkApiReady()) {
-      // 如果未就绪，设置轮询检查
-      const interval = setInterval(() => {
-        if (checkApiReady()) {
-          clearInterval(interval);
-          clearTimeout(timeoutId);
-        }
-      }, 500);
-      
-      // 10秒后显示错误
-      const timeoutId = setTimeout(() => {
-        if (!window.electronAPI && !window.__ELECTRON_API_READY__) {
-          setApiError(true);
-          clearInterval(interval);
-        }
-      }, 10000);
-      
-      return () => {
-        clearInterval(interval);
-        clearTimeout(timeoutId);
-      };
+      setApiReady(true);
+      setApiError(false);
+      loadAiSites();
+    } else {
+      console.error('[RENDERER] Electron API 未就绪。请检查预加载脚本配置。');
+      setApiError(true);
     }
   }, []);
 

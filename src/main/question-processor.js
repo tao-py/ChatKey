@@ -4,10 +4,9 @@ const { Logger } = require('./logger');
 const { AnswerAdapter } = require('./answer-adapter');
 
 class QuestionProcessor {
-  constructor(dbManager = null) {
+  constructor() {
     this.automation = new BrowserAutomation();
-    // 如果提供了数据库管理器实例，则使用它；否则创建新的实例
-    this.dbManager = dbManager || new DatabaseManager();
+    this.dbManager = new DatabaseManager();
     this.logger = new Logger('QuestionProcessor');
   }
 
@@ -15,7 +14,7 @@ class QuestionProcessor {
     this.logger.info('Initializing QuestionProcessor');
     try {
       await this.automation.init();
-      // 不在这里初始化dbManager，因为它可能已在别处初始化
+      await this.dbManager.init();
       this.logger.info('QuestionProcessor initialized successfully');
     } catch (error) {
       this.logger.error('Failed to initialize QuestionProcessor:', error);
@@ -53,8 +52,20 @@ class QuestionProcessor {
       // 向多个网站发送问题
       const answers = await this.automation.sendQuestionToMultipleSites(question, enabledSites);
       
+      // 确保错误字段是字符串，避免JSON序列化问题
+      const safeAnswers = answers.map(answer => {
+        if (answer.error && typeof answer.error !== 'string') {
+          if (answer.error instanceof Error) {
+            answer.error = answer.error.message;
+          } else {
+            answer.error = String(answer.error);
+          }
+        }
+        return answer;
+      });
+      
       // 使用回答适配器统一格式
-      const adaptedAnswers = answers.map(answer => {
+      const adaptedAnswers = safeAnswers.map(answer => {
         if (answer.status === 'success' && answer.answer) {
           try {
             const adapted = AnswerAdapter.adapt(answer.answer, answer.site);
@@ -116,7 +127,7 @@ class QuestionProcessor {
     this.logger.info('Closing QuestionProcessor');
     try {
       await this.automation.close();
-      // 不关闭dbManager，因为它可能在其他地方使用
+      this.dbManager.close();
       this.logger.info('QuestionProcessor closed successfully');
     } catch (error) {
       this.logger.error('Error while closing QuestionProcessor:', error);
