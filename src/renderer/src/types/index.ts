@@ -56,8 +56,12 @@ export interface ElectronAPI {
   deleteAiSite: (siteId: number) => Promise<void>;
   processQuestion: (question: string) => Promise<{answers: Answer[]}>;
   getHistory: () => Promise<QaRecord[]>;
+  deleteHistoryRecord: (recordId: number) => Promise<void>;
   getApiConfig: () => Promise<ApiConfig>;
   saveApiConfig: (config: Partial<ApiConfig>) => Promise<void>;
+  showBrowser: () => Promise<{success: boolean; error?: string}>;
+  hideBrowser: () => Promise<{success: boolean; error?: string}>;
+  onLoginNotification: (callback: (message: string) => void) => void;
 }
 
 // 为 Node.js 全局对象扩展类型

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Modal, Typography, Tag, Input } from 'antd';
-import { EyeOutlined } from '@ant-design/icons';
+import { Table, Button, Modal, Typography, Tag, Input, Space, Popconfirm, message } from 'antd';
+import { EyeOutlined, DeleteOutlined } from '@ant-design/icons';
 import { QaRecord } from '../types';
 import AnswerComparison from './AnswerComparison';
 
@@ -14,6 +14,7 @@ const HistoryManager: React.FC = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<QaRecord | null>(null);
   const [searchText, setSearchText] = useState('');
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   useEffect(() => {
     loadHistory();
@@ -78,6 +79,26 @@ const HistoryManager: React.FC = () => {
     setModalVisible(true);
   };
 
+  const handleDelete = async (recordId: number) => {
+    setDeletingId(recordId);
+    try {
+      if (!isElectron) {
+        console.log('[HistoryManager] 浏览器模式：模拟删除');
+        setHistory(prev => prev.filter(r => r.id !== recordId));
+        message.success('删除成功');
+        return;
+      }
+      await window.electronAPI.deleteHistoryRecord(recordId);
+      setHistory(prev => prev.filter(r => r.id !== recordId));
+      message.success('删除成功');
+    } catch (error) {
+      console.error('删除历史记录失败:', error);
+      message.error('删除失败');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const filteredHistory = history.filter(record =>
     record.question.toLowerCase().includes(searchText.toLowerCase())
   );
@@ -124,15 +145,34 @@ const HistoryManager: React.FC = () => {
     {
       title: '操作',
       key: 'action',
-      width: 100,
+      width: 180,
       render: (_: any, record: QaRecord) => (
-        <Button
-          type="text"
-          icon={<EyeOutlined />}
-          onClick={() => handleView(record)}
-        >
-          查看
-        </Button>
+        <Space size="small">
+          <Button
+            type="text"
+            icon={<EyeOutlined />}
+            onClick={() => handleView(record)}
+          >
+            查看
+          </Button>
+          <Popconfirm
+            title="确定删除"
+            description="确定要删除这条历史记录吗？"
+            onConfirm={() => handleDelete(record.id!)}
+            okText="确定"
+            cancelText="取消"
+            disabled={deletingId === record.id}
+          >
+            <Button
+              type="text"
+              danger
+              icon={<DeleteOutlined />}
+              loading={deletingId === record.id}
+            >
+              删除
+            </Button>
+          </Popconfirm>
+        </Space>
       ),
     },
   ];

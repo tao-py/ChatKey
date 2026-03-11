@@ -308,33 +308,38 @@ class DatabaseManager {
   }
 
   // 基础数据库操作方法
-  async execute(sql, params = []) {
-    if (this.type === 'sqlite') {
-      // SQLite 操作
-      if (sql.trim().toUpperCase().startsWith('SELECT')) {
-        return await this.db.all(sql, params);
-      } else {
-        const result = await this.db.run(sql, params);
-        return {
-          insertId: result.lastID,
-          affectedRows: result.changes
-        };
-      }
-    } else {
-      // MySQL 操作
-      if (!this.pool) {
-        throw new Error('数据库连接池未初始化');
-      }
-      
-      try {
-        const [rows] = await this.pool.execute(sql, params);
-        return rows;
-      } catch (error) {
-        console.error('数据库执行错误:', { sql, params, error: error.message });
-        throw error;
-      }
-    }
-  }
+   async execute(sql, params = []) {
+     if (this.type === 'sqlite') {
+       // SQLite 操作
+       if (sql.trim().toUpperCase().startsWith('SELECT')) {
+         return await this.db.all(sql, params);
+       } else {
+         const result = await this.db.run(sql, params);
+         return {
+           insertId: result.lastID,
+           affectedRows: result.changes
+         };
+       }
+     } else {
+       // MySQL 操作
+       if (!this.pool) {
+         throw new Error('数据库连接池未初始化');
+       }
+       
+       try {
+         // mysql2/promise 的 execute 返回 [rows, fields]
+         const [rows, fields] = await this.pool.execute(sql, params);
+         return {
+           rows,
+           insertId: fields?.insertId,
+           affectedRows: fields?.affectedRows
+         };
+       } catch (error) {
+         console.error('数据库执行错误:', { sql, params, error: error.message });
+         throw error;
+       }
+     }
+   }
 
   async run(sql, params = []) {
     if (this.type === 'sqlite') {
@@ -355,22 +360,24 @@ class DatabaseManager {
     }
   }
 
-  async get(sql, params = []) {
-    if (this.type === 'sqlite') {
-      return await this.db.get(sql, params);
-    } else {
-      const rows = await this.execute(sql, params);
-      return rows.length > 0 ? rows[0] : null;
-    }
-  }
+   async get(sql, params = []) {
+     if (this.type === 'sqlite') {
+       return await this.db.get(sql, params);
+     } else {
+       const result = await this.execute(sql, params);
+       const rows = result.rows || result;
+       return rows.length > 0 ? rows[0] : null;
+     }
+   }
 
-  async all(sql, params = []) {
-    if (this.type === 'sqlite') {
-      return await this.db.all(sql, params);
-    } else {
-      return await this.execute(sql, params);
-    }
-  }
+   async all(sql, params = []) {
+     if (this.type === 'sqlite') {
+       return await this.db.all(sql, params);
+     } else {
+       const result = await this.execute(sql, params);
+       return result.rows || result;
+     }
+   }
 
   // AI网站管理
   async getAiSites() {
@@ -421,9 +428,13 @@ class DatabaseManager {
     }
   }
 
-  async deleteAiSite(siteId) {
-    return await this.run('DELETE FROM ai_sites WHERE id = ?', [siteId]);
-  }
+   async deleteAiSite(siteId) {
+     return await this.run('DELETE FROM ai_sites WHERE id = ?', [siteId]);
+   }
+
+   async deleteHistoryRecord(recordId) {
+     return await this.run('DELETE FROM qa_records WHERE id = ?', [recordId]);
+   }
 
   // 问答记录管理
   async getHistory() {
@@ -439,22 +450,34 @@ class DatabaseManager {
     }
   }
 
-  async saveQaRecord(record) {
-    const { question, answers, status = 'completed' } = record;
-    let answersString;
-    try {
-      answersString = JSON.stringify(answers);
-    } catch (stringifyError) {
-      console.error('Failed to stringify answers:', stringifyError);
-      // 尝试清理answers中的循环引用或不可序列化的值
-      const safeAnswers = this.makeSerializable(answers);
-      answersString = JSON.stringify(safeAnswers);
-    }
-    return await this.run(
-      'INSERT INTO qa_records (question, answers, status) VALUES (?, ?, ?)',
-      [question, answersString, status]
-    );
-  }
+   async saveQaRecord(record) {
+     const { id, question, answers, status = 'completed' } = record;
+     let answersString;
+     try {
+       answersString = JSON.stringify(answers);
+     } catch (stringifyError) {
+       console.error('Failed to stringify answers:', stringifyError);
+       // 尝试清理answers中的循环引用或不可序列化的值
+       const safeAnswers = this.makeSerializable(answers);
+       answersString = JSON.stringify(safeAnswers);
+     }
+     
+     if (id) {
+       // 更新现有记录
+       return await this.run(
+         'UPDATE qa_records SET question = ?, answers = ?, status = ? WHERE id = ?',
+         [question, answersString, status, id]
+       );
+     } else {
+       // 插入新记录
+       const result = await this.run(
+         'INSERT INTO qa_records (question, answers, status) VALUES (?, ?, ?)',
+         [question, answersString, status]
+       );
+       // 返回插入的ID，确保是数字类型
+       return result && result.id ? result.id : null;
+     }
+   }
 
   // API配置管理
   async getApiConfig() {
@@ -478,22 +501,35 @@ class DatabaseManager {
     }
   }
 
-  async saveApiConfig(config) {
-    const { api_key, port, enabled } = config;
-    const existing = await this.get('SELECT id FROM api_config LIMIT 1');
-    
-    if (existing) {
-      return await this.run(
-        'UPDATE api_config SET api_key = ?, port = ?, enabled = ? WHERE id = ?',
-        [api_key, port, enabled, existing.id]
-      );
-    } else {
-      return await this.run(
-        'INSERT INTO api_config (api_key, port, enabled) VALUES (?, ?, ?)',
-        [api_key, port, enabled]
-      );
-    }
-  }
+   async saveApiConfig(config) {
+     const { api_key, port, enabled } = config;
+     const existing = await this.get('SELECT id, api_key FROM api_config LIMIT 1');
+     
+     if (existing) {
+       // 如果api_key没有变化，直接更新port和enabled
+       // 如果api_key变了，需要检查新key是否已被其他记录使用
+       if (existing.api_key !== api_key) {
+         const duplicateCheck = await this.get('SELECT id FROM api_config WHERE api_key = ? AND id != ?', [api_key, existing.id]);
+         if (duplicateCheck) {
+           throw new Error(`API key '${api_key}' is already in use by another record`);
+         }
+       }
+       return await this.run(
+         'UPDATE api_config SET api_key = ?, port = ?, enabled = ? WHERE id = ?',
+         [api_key, port, enabled, existing.id]
+       );
+     } else {
+       // 插入新记录前检查是否已存在相同api_key
+       const duplicateCheck = await this.get('SELECT id FROM api_config WHERE api_key = ?', [api_key]);
+       if (duplicateCheck) {
+         throw new Error(`API key '${api_key}' already exists`);
+       }
+       return await this.run(
+         'INSERT INTO api_config (api_key, port, enabled) VALUES (?, ?, ?)',
+         [api_key, port, enabled]
+       );
+     }
+   }
 
   makeSerializable(obj) {
     if (obj === null || typeof obj !== 'object') {

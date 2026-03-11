@@ -28,65 +28,75 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [apiReady, setApiReady] = useState(false);
   const [apiError, setApiError] = useState(false);
+  const [loginNotification, setLoginNotification] = useState<string | null>(null);
 
-  useEffect(() => {
-    console.log('[RENDERER] 初始化应用，检查 Electron API...');
-    
-    // 检查是否是浏览器环境
-    if (!isElectron) {
-      console.log('[RENDERER] 当前在浏览器模式运行，使用模拟数据');
-      setApiReady(true);
-      setApiError(false);
-      // 加载模拟AI网站数据
-      loadMockAiSites();
-      return;
-    }
-    
-    // 以下是Electron环境下的原有逻辑
-    const hasElectronAPI = window.electronAPI !== undefined;
-    const apiReadyFlag = window.__ELECTRON_API_READY__ === true;
-    const apiError = window.__ELECTRON_API_ERROR__;
-    
-    console.log('[RENDERER] API 状态:', {
-      electronAPI: hasElectronAPI,
-      readyFlag: apiReadyFlag,
-      error: apiError
-    });
-    
-    // 检查是否有错误
-    if (apiError) {
-      console.error('[RENDERER] Electron API 错误:', apiError);
-      setApiError(true);
-      return;
-    }
-    
-    // 检查是否就绪
-    const isReady = hasElectronAPI || apiReadyFlag;
-    
-    if (isReady) {
-      console.log('[RENDERER] Electron API 已就绪');
-      // 使用 window.electronAPI
-      const apiObj = window.electronAPI;
-      
-      // 如果 electronAPI 存在，尝试调用测试方法验证其功能
-      if (apiObj && apiObj.test) {
-        try {
-          const testResult = apiObj.test();
-          console.log('[RENDERER] Electron API 测试成功:', testResult);
-        } catch (error) {
-          console.error('[RENDERER] Electron API 测试失败:', error);
-          // 即使测试失败，仍然视为可用，但记录错误
-        }
-      }
-      
-      setApiReady(true);
-      setApiError(false);
-      loadAiSites();
-    } else {
-      console.error('[RENDERER] Electron API 未就绪。请检查预加载脚本配置。');
-      setApiError(true);
-    }
-  }, []);
+   useEffect(() => {
+     console.log('[RENDERER] 初始化应用，检查 Electron API...');
+     
+     // 检查是否是浏览器环境
+     if (!isElectron) {
+       console.log('[RENDERER] 当前在浏览器模式运行，使用模拟数据');
+       setApiReady(true);
+       setApiError(false);
+       // 加载模拟AI网站数据
+       loadMockAiSites();
+       return;
+     }
+     
+     // 以下是Electron环境下的原有逻辑
+     const hasElectronAPI = window.electronAPI !== undefined;
+     const apiReadyFlag = window.__ELECTRON_API_READY__ === true;
+     const apiError = window.__ELECTRON_API_ERROR__;
+     
+     console.log('[RENDERER] API 状态:', {
+       electronAPI: hasElectronAPI,
+       readyFlag: apiReadyFlag,
+       error: apiError
+     });
+     
+     // 检查是否有错误
+     if (apiError) {
+       console.error('[RENDERER] Electron API 错误:', apiError);
+       setApiError(true);
+       return;
+     }
+     
+     // 检查是否就绪
+     const isReady = hasElectronAPI || apiReadyFlag;
+     
+     if (isReady) {
+       console.log('[RENDERER] Electron API 已就绪');
+       // 使用 window.electronAPI
+       const apiObj = window.electronAPI;
+       
+       // 如果 electronAPI 存在，尝试调用测试方法验证其功能
+       if (apiObj && apiObj.test) {
+         try {
+           const testResult = apiObj.test();
+           console.log('[RENDERER] Electron API 测试成功:', testResult);
+         } catch (error) {
+           console.error('[RENDERER] Electron API 测试失败:', error);
+           // 即使测试失败，仍然视为可用，但记录错误
+         }
+       }
+       
+       // 设置登录通知监听
+       if (apiObj && apiObj.onLoginNotification) {
+         apiObj.onLoginNotification((message: string) => {
+           setLoginNotification(message);
+           // 5秒后自动清除通知
+           setTimeout(() => setLoginNotification(null), 5000);
+         });
+       }
+       
+       setApiReady(true);
+       setApiError(false);
+       loadAiSites();
+     } else {
+       console.error('[RENDERER] Electron API 未就绪。请检查预加载脚本配置。');
+       setApiError(true);
+     }
+   }, []);
 
   const loadMockAiSites = () => {
     console.log('[RENDERER] 加载模拟AI网站数据');
@@ -115,18 +125,18 @@ function App() {
     setAiSites(mockSites);
   };
 
-  const loadAiSites = async () => {
-    try {
-      if (!window.electronAPI) {
-        console.error('Electron API 未就绪，请等待应用初始化');
-        return;
-      }
-      const sites = await window.electronAPI.getAiSites();
-      setAiSites(sites);
-    } catch (error) {
-      console.error('加载AI网站配置失败:', error);
-    }
-  };
+   const loadAiSites = async () => {
+     try {
+       if (!window.electronAPI) {
+         console.error('Electron API 未就绪，请等待应用初始化');
+         return;
+       }
+       const sites = await window.electronAPI.getAiSites();
+       setAiSites(sites);
+     } catch (error) {
+       console.error('加载AI网站配置失败:', error);
+     }
+   };
 
   const handleQuestionSubmit = async (question: string) => {
     setCurrentQuestion(question);
@@ -331,6 +341,27 @@ function App() {
           </span>
         </Space>
       </Header>
+      
+      {/* 登录通知 */}
+      {loginNotification && (
+        <div style={{
+          background: '#fff3cd',
+          border: '1px solid #ffeaa7',
+          padding: '12px 24px',
+          margin: '16px 24px',
+          borderRadius: '4px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between'
+        }}>
+          <span style={{ color: '#856404' }}>
+            🔐 {loginNotification}
+          </span>
+          <Button type="link" size="small" onClick={() => setLoginNotification(null)}>
+            关闭
+          </Button>
+        </div>
+      )}
       
       <Layout>
         <Sider width={200} style={{ background: '#fff' }}>

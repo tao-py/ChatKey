@@ -61,9 +61,10 @@ try {
     saveAiSite: (siteData) => ipcRenderer.invoke('save-ai-site', siteData),
     deleteAiSite: (siteId) => ipcRenderer.invoke('delete-ai-site', siteId),
     
-    // 历史记录
-    getHistory: () => ipcRenderer.invoke('get-history'),
-    saveQaRecord: (record) => ipcRenderer.invoke('save-qa-record', record),
+     // 历史记录
+     getHistory: () => ipcRenderer.invoke('get-history'),
+     saveQaRecord: (record) => ipcRenderer.invoke('save-qa-record', record),
+     deleteHistoryRecord: (recordId) => ipcRenderer.invoke('delete-history-record', recordId),
     
     // API配置
     getApiConfig: () => ipcRenderer.invoke('get-api-config'),
@@ -85,9 +86,18 @@ try {
       ipcRenderer.removeListener(channel, func);
     },
     
-    // 处理问题（集成浏览器自动化）
-    processQuestion: (question) => ipcRenderer.invoke('process-question', question)
-  };
+     // 处理问题（集成浏览器自动化）
+     processQuestion: (question) => ipcRenderer.invoke('process-question', question),
+     
+     // 控制浏览器窗口
+     showBrowser: () => ipcRenderer.invoke('show-browser'),
+     hideBrowser: () => ipcRenderer.invoke('hide-browser'),
+     
+     // 登录通知
+     onLoginNotification: (callback) => {
+       ipcRenderer.on('show-login-notification', (event, message) => callback(message));
+     }
+   };
   
   // 暴露API到渲染进程
   const isContextIsolated = typeof process !== 'undefined' && process.contextIsolated;

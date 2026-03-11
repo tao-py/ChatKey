@@ -12,6 +12,7 @@ class ElectronApp {
     this.dbManager = new DatabaseManager();
     this.apiServer = null;
     this.questionProcessor = new QuestionProcessor();
+    this.browserAutomation = null; // 直接访问浏览器自动化实例
   }
 
   async init() {
@@ -97,6 +98,8 @@ class ElectronApp {
     try {
       await this.questionProcessor.init();
       console.log('问题处理器初始化成功');
+      // 保存对浏览器自动化实例的引用
+      this.browserAutomation = this.questionProcessor.automation;
     } catch (error) {
       console.error('问题处理器初始化失败:', error);
     }
@@ -209,10 +212,15 @@ class ElectronApp {
       return await this.dbManager.getHistory();
     });
 
-    // 保存问答记录
-    ipcMain.handle('save-qa-record', async (event, record) => {
-      return await this.dbManager.saveQaRecord(record);
-    });
+     // 保存问答记录
+     ipcMain.handle('save-qa-record', async (event, record) => {
+       return await this.dbManager.saveQaRecord(record);
+     });
+
+     // 删除历史记录
+     ipcMain.handle('delete-history-record', async (event, recordId) => {
+       return await this.dbManager.deleteHistoryRecord(recordId);
+     });
 
     // 获取API配置
     ipcMain.handle('get-api-config', async () => {
@@ -224,16 +232,40 @@ class ElectronApp {
       return await this.dbManager.saveApiConfig(config);
     });
 
-    // 处理问题（集成浏览器自动化）
-    ipcMain.handle('process-question', async (event, question) => {
-      try {
-        return await this.questionProcessor.processQuestion(question);
-      } catch (error) {
-        console.error('处理问题失败:', error);
-        throw error;
-      }
-    });
-  }
+     // 处理问题（集成浏览器自动化）
+     ipcMain.handle('process-question', async (event, question) => {
+       try {
+         return await this.questionProcessor.processQuestion(question);
+       } catch (error) {
+         console.error('处理问题失败:', error);
+         throw error;
+       }
+     });
+
+     // 控制浏览器窗口显示/隐藏
+     ipcMain.handle('show-browser', async () => {
+       if (this.browserAutomation) {
+         return await this.browserAutomation.showBrowser();
+       }
+       return { success: false, error: 'Browser not initialized' };
+     });
+
+     ipcMain.handle('hide-browser', async () => {
+       if (this.browserAutomation) {
+         return await this.browserAutomation.hideBrowser();
+       }
+       return { success: false, error: 'Browser not initialized' };
+     });
+
+     // 显示登录通知
+     ipcMain.handle('show-login-notification', async (event, message) => {
+       if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+         // 发送到渲染进程显示通知
+         this.mainWindow.webContents.send('show-login-notification', message);
+       }
+       return { success: true };
+     });
+   }
 }
 
 // 应用生命周期管理
