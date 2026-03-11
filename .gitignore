@@ -30,3 +30,4 @@ nul
 *.temp
 .cache/
 .*/
+.gitnexus

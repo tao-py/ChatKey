@@ -1,6 +1,6 @@
 // 预加载脚本 - 在渲染进程之前执行
 // 重要：在沙箱环境中，不能直接使用 Node.js API 如 process.cwd()
-
+console.log("🔥 PRELOAD EXECUTED");
 console.log('[PRELOAD] 预加载脚本开始执行');
 
 // 使用 contextBridge 安全地暴露 API 到渲染进程
@@ -90,7 +90,7 @@ try {
   };
   
   // 暴露API到渲染进程
-  const isContextIsolated = process.contextIsolated;
+  const isContextIsolated = typeof process !== 'undefined' && process.contextIsolated;
   
   if (contextBridge) {
     // 使用 contextBridge 安全地暴露 API
