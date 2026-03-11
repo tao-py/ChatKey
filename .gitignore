@@ -25,6 +25,7 @@ out/
 release/
 
 # 临时文件
+nul
 *.tmp
 *.temp
 .cache/
