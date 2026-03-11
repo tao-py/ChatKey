@@ -4,6 +4,7 @@ import { CopyOutlined } from '@ant-design/icons';
 import { ApiConfig as ApiConfigType } from '../types';
 
 const { Paragraph, Text } = Typography;
+const isElectron = !!window.electronAPI;
 
 const ApiConfig: React.FC = () => {
   const [config, setConfig] = useState<ApiConfigType | null>(null);
@@ -17,9 +18,16 @@ const ApiConfig: React.FC = () => {
   const loadConfig = async () => {
     setLoading(true);
     try {
-      if (!window.electronAPI) {
-        message.error('Electron API 未就绪，请等待应用初始化');
-        setConfig(null);
+      if (!isElectron) {
+        console.log('[ApiConfig] 浏览器模式：使用模拟配置');
+        // 设置模拟配置
+        const mockConfig = {
+          api_key: 'mock-api-key-for-browser',
+          port: 8080,
+          enabled: false
+        };
+        setConfig(mockConfig);
+        message.info('当前为浏览器模式，显示模拟配置');
         return;
       }
       const data = await window.electronAPI.getApiConfig();
@@ -35,8 +43,11 @@ const ApiConfig: React.FC = () => {
   const handleSave = async (values: any) => {
     setSaving(true);
     try {
-      if (!window.electronAPI) {
-        message.error('Electron API 未就绪，请等待应用初始化');
+      if (!isElectron) {
+        message.info('浏览器模式下配置无法保存，仅支持预览');
+        // 更新本地模拟配置
+        setConfig(values);
+        message.success('模拟配置已更新（仅本地）');
         return;
       }
       await window.electronAPI.saveApiConfig(values);

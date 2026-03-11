@@ -13,6 +13,8 @@ import HistoryManager from './components/HistoryManager';
 import ApiConfig from './components/ApiConfig';
 import { AiSite } from './types';
 
+const isElectron = !!window.electronAPI;
+
 const { Header, Content, Sider } = Layout;
 const { Title } = Typography;
 
@@ -30,7 +32,17 @@ function App() {
   useEffect(() => {
     console.log('[RENDERER] 初始化应用，检查 Electron API...');
     
-    // 检查API是否通过 contextBridge 暴露
+    // 检查是否是浏览器环境
+    if (!isElectron) {
+      console.log('[RENDERER] 当前在浏览器模式运行，使用模拟数据');
+      setApiReady(true);
+      setApiError(false);
+      // 加载模拟AI网站数据
+      loadMockAiSites();
+      return;
+    }
+    
+    // 以下是Electron环境下的原有逻辑
     const hasElectronAPI = window.electronAPI !== undefined;
     const apiReadyFlag = window.__ELECTRON_API_READY__ === true;
     const apiError = window.__ELECTRON_API_ERROR__;
@@ -76,6 +88,33 @@ function App() {
     }
   }, []);
 
+  const loadMockAiSites = () => {
+    console.log('[RENDERER] 加载模拟AI网站数据');
+    const mockSites = [
+      {
+        id: 1,
+        name: 'DeepSeek',
+        url: 'https://chat.deepseek.com',
+        selector: '[data-testid="conversation-turn-content"], .markdown-content, .message-content',
+        input_selector: 'textarea[placeholder*="输入"], textarea[placeholder*="Send"], #chat-input',
+        submit_selector: 'button[type="submit"], button:has-text("发送"), button:has-text("Send")',
+        enabled: true,
+        created_at: new Date().toISOString()
+      },
+      {
+        id: 2,
+        name: '通义千问',
+        url: 'https://tongyi.aliyun.com',
+        selector: '.message-content, .bubble-content, .chat-message',
+        input_selector: 'textarea[placeholder*="输入"], .chat-input textarea',
+        submit_selector: 'button[type="submit"], .send-button, button:has-text("发送")',
+        enabled: true,
+        created_at: new Date().toISOString()
+      }
+    ];
+    setAiSites(mockSites);
+  };
+
   const loadAiSites = async () => {
     try {
       if (!window.electronAPI) {
@@ -92,6 +131,20 @@ function App() {
   const handleQuestionSubmit = async (question: string) => {
     setCurrentQuestion(question);
     setIsLoading(true);
+    
+    // 如果在浏览器模式下，直接使用模拟回答
+    if (!isElectron) {
+      console.log('[RENDERER] 浏览器模式：使用模拟回答');
+      const mockAnswers = aiSites.filter(site => site.enabled).map(site => ({
+        site: site.name,
+        answer: `这是来自 ${site.name} 的模拟回答，问题：${question}`,
+        timestamp: new Date().toISOString(),
+        status: 'success'
+      }));
+      setCurrentAnswers(mockAnswers);
+      setIsLoading(false);
+      return;
+    }
     
     try {
       if (!window.electronAPI) {

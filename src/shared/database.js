@@ -152,6 +152,16 @@ class DatabaseManager {
         enabled INTEGER DEFAULT 1,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`,
+      
+      // Cookies表 - 保存网站登录状态
+      `CREATE TABLE IF NOT EXISTS cookies (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        site_key TEXT NOT NULL,
+        cookies_data TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(site_key)
       )`
     ];
 
@@ -204,6 +214,18 @@ class DatabaseManager {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_enabled (enabled)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+      
+      // Cookies表 - 保存网站登录状态
+      `CREATE TABLE IF NOT EXISTS cookies (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        site_key VARCHAR(255) NOT NULL,
+        cookies_data LONGTEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_site_key (site_key),
+        INDEX idx_updated_at (updated_at),
+        UNIQUE KEY uk_site_key (site_key)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
     ];
 

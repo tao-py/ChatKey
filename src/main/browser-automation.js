@@ -7,6 +7,18 @@ class SiteAdapter {
   static async adapt(page, site, question) {
     const siteName = site.name.toLowerCase();
     
+    // 首先检查登录状态
+    try {
+      await this.checkLoginStatus(page, site);
+    } catch (loginError) {
+      console.log(`Login check failed for ${site.name}:`, loginError.message);
+      // 如果是需要登录的错误，重新抛出以便上层处理
+      if (loginError.message.includes('请先登录')) {
+        throw loginError;
+      }
+      // 其他错误继续处理
+    }
+    
     switch (siteName) {
       case 'deepseek':
         return await this.handleDeepSeek(page, site, question);
@@ -105,11 +117,91 @@ class SiteAdapter {
     return await this.handleGeneric(page, site, question);
   }
   
+  static async checkLoginStatus(page, site) {
+    console.log(`Checking login status for ${site.name}`);
+    
+    // 常见的登录提示选择器
+    const loginSelectors = [
+      'button:has-text("登录")',
+      'button:has-text("Log in")',
+      'button:has-text("Sign in")',
+      'a:has-text("登录")',
+      'a:has-text("Log in")',
+      'a:has-text("Sign in")',
+      'input[type="password"]',
+      'input[placeholder*="密码"]',
+      'input[placeholder*="Password"]',
+      '.login-button',
+      '.signin-button',
+      '[data-testid*="login"]'
+    ];
+    
+    // 检查是否有登录提示
+    for (const selector of loginSelectors) {
+      try {
+        const element = await page.$(selector);
+        if (element) {
+          const isVisible = await element.isVisible();
+          if (isVisible) {
+            console.log(`Login required for ${site.name}: found selector "${selector}"`);
+            throw new Error(`检测到 ${site.name} 需要登录。请按照以下步骤操作：
+1. 在打开的浏览器窗口中手动登录 ${site.name}
+2. 登录成功后，返回本应用
+3. 再次尝试提问
+
+登录状态将被保存，下次使用时无需重复登录。`);
+          }
+        }
+      } catch (error) {
+        // 忽略选择器错误
+      }
+    }
+    
+    // 检查是否有欢迎/开始聊天按钮（这可能是登录后的状态）
+    const welcomeSelectors = [
+      'button:has-text("开始聊天")',
+      'button:has-text("开始对话")',
+      'button:has-text("Start Chat")',
+      'button:has-text("New Chat")'
+    ];
+    
+    for (const selector of welcomeSelectors) {
+      try {
+        const element = await page.$(selector);
+        if (element) {
+          const isVisible = await element.isVisible();
+          if (isVisible) {
+            console.log(`Welcome screen detected for ${site.name}, clicking it`);
+            await element.click();
+            await page.waitForTimeout(1000);
+          }
+        }
+      } catch (error) {
+        // 忽略选择器错误
+      }
+    }
+    
+    console.log(`Login check passed for ${site.name}`);
+    return true;
+  }
+  
   static async handleGeneric(page, site, question) {
     console.log('Using generic adapter');
     
     // 通用的处理逻辑 - 与原有的sendQuestionToSite逻辑类似
-    const config = site.config ? JSON.parse(site.config) : {};
+    let config = {};
+    if (site.config) {
+      if (typeof site.config === 'string') {
+        try {
+          config = JSON.parse(site.config);
+        } catch (error) {
+          console.error('Failed to parse config string:', error);
+          config = {};
+        }
+      } else if (typeof site.config === 'object' && site.config !== null) {
+        config = site.config;
+      }
+    }
     const waitTime = config.waitTime || 2000;
     
     // 等待页面加载
@@ -161,6 +253,54 @@ class BrowserAutomation {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
+  // Cookie管理方法
+  async saveCookies(site, page) {
+    try {
+      const cookies = await page.cookies();
+      const cookiesKey = this.getCookiesKey(site);
+      // 将cookies保存到数据库
+      await this.dbManager.run(
+        'INSERT INTO cookies (site_key, cookies_data, created_at) VALUES (?, ?, NOW()) ' +
+        'ON DUPLICATE KEY UPDATE cookies_data = ?, updated_at = NOW()',
+        [cookiesKey, JSON.stringify(cookies), JSON.stringify(cookies)]
+      );
+      this.logger.info(`Saved cookies for ${site.name} (${cookies.length} cookies)`);
+    } catch (error) {
+      this.logger.warn(`Failed to save cookies for ${site.name}:`, error.message);
+    }
+  }
+
+  async loadCookies(site, page) {
+    try {
+      const cookiesKey = this.getCookiesKey(site);
+      const rows = await this.dbManager.all(
+        'SELECT cookies_data FROM cookies WHERE site_key = ? ORDER BY updated_at DESC LIMIT 1',
+        [cookiesKey]
+      );
+      
+      if (rows.length > 0) {
+        const cookiesData = rows[0].cookies_data;
+        if (cookiesData) {
+          const cookies = JSON.parse(cookiesData);
+          if (cookies.length > 0) {
+            await page.setCookie(...cookies);
+            this.logger.info(`Loaded ${cookies.length} cookies for ${site.name}`);
+            return true;
+          }
+        }
+      }
+    } catch (error) {
+      this.logger.warn(`Failed to load cookies for ${site.name}:`, error.message);
+    }
+    return false;
+  }
+
+  getCookiesKey(site) {
+    // 使用网站URL作为键，去除协议和路径部分
+    const url = new URL(site.url);
+    return `${url.hostname}`;
+  }
+
   async sendQuestionToSiteWithRetry(site, question, maxRetries = null) {
     const retries = maxRetries || this.maxRetries;
     this.logger.info(`Starting question processing for ${site.name} with ${retries} max retries`);
@@ -170,8 +310,25 @@ class BrowserAutomation {
         const result = await this.sendQuestionToSite(site, question);
         this.logger.info(`Successfully processed ${site.name} on attempt ${i + 1}`);
         return result;
-      } catch (error) {
+       } catch (error) {
         this.logger.warn(`Attempt ${i + 1} failed for ${site.name}:`, error.message);
+        
+        // 检查是否是登录错误
+        const errorMessage = typeof error.message === 'string' ? error.message : String(error);
+        const isLoginError = errorMessage.includes('登录') || errorMessage.toLowerCase().includes('login') || errorMessage.includes('需要登录');
+        
+        if (isLoginError) {
+          // 如果是登录错误，立即返回，不进行重试
+          this.logger.error(`Login required for ${site.name}:`, errorMessage);
+          return {
+            site: site.name,
+            answer: '',
+            timestamp: new Date().toISOString(),
+            status: 'failed',
+            error: errorMessage,
+            requiresLogin: true
+          };
+        }
         
         if (i === retries - 1) {
           // 最后一次尝试失败，返回错误结果
@@ -181,7 +338,7 @@ class BrowserAutomation {
             answer: '',
             timestamp: new Date().toISOString(),
             status: 'failed',
-            error: typeof error.message === 'string' ? error.message : String(error)
+            error: errorMessage
           };
         }
         
@@ -207,6 +364,14 @@ class BrowserAutomation {
       
       // 设置用户代理以避免被检测为机器人
       await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36');
+      
+      // 加载之前保存的cookies（如果存在）
+      const hasCookies = await this.loadCookies(site, page);
+      if (hasCookies) {
+        this.logger.info(`Using saved cookies for ${site.name}`);
+      } else {
+        this.logger.info(`No saved cookies found for ${site.name}`);
+      }
       
       // 导航到网站
       this.logger.info(`Navigating to ${site.name}: ${site.url}`);
@@ -291,6 +456,9 @@ class BrowserAutomation {
       }
       
       this.logger.info(`Successfully got answer from ${site.name}: ${answer.substring(0, 100)}...`);
+      
+      // 保存cookies以便下次使用
+      await this.saveCookies(site, page);
       
       return {
         site: site.name,

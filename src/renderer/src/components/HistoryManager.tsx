@@ -6,6 +6,7 @@ import AnswerComparison from './AnswerComparison';
 
 const { Search } = Input;
 const { Paragraph } = Typography;
+const isElectron = !!window.electronAPI;
 
 const HistoryManager: React.FC = () => {
   const [history, setHistory] = useState<QaRecord[]>([]);
@@ -21,9 +22,46 @@ const HistoryManager: React.FC = () => {
   const loadHistory = async () => {
     setLoading(true);
     try {
-      if (!window.electronAPI) {
-        console.error('Electron API 未就绪，请等待应用初始化');
-        setHistory([]);
+      if (!isElectron) {
+        console.log('[HistoryManager] 浏览器模式：使用模拟历史数据');
+        // 设置模拟历史数据
+        const mockHistory = [
+          {
+            id: 1,
+            question: '什么是React？',
+            answers: [
+              {
+                site: 'DeepSeek',
+                answer: 'React是一个用于构建用户界面的JavaScript库，由Facebook开发。',
+                timestamp: new Date().toISOString(),
+                status: 'success' as const
+              },
+              {
+                site: '通义千问',
+                answer: 'React是一个声明式、高效且灵活的JavaScript库，用于构建用户界面。',
+                timestamp: new Date().toISOString(),
+                status: 'success' as const
+              }
+            ],
+            status: 'completed' as const,
+            created_at: new Date().toISOString()
+          },
+          {
+            id: 2,
+            question: '如何学习前端开发？',
+            answers: [
+              {
+                site: 'DeepSeek',
+                answer: '学习前端开发需要掌握HTML、CSS和JavaScript基础知识，然后学习框架如React或Vue。',
+                timestamp: new Date().toISOString(),
+                status: 'success' as const
+              }
+            ],
+            status: 'completed' as const,
+            created_at: new Date().toISOString()
+          }
+        ];
+        setHistory(mockHistory);
         return;
       }
       const data = await window.electronAPI.getHistory();

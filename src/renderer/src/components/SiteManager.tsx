@@ -4,6 +4,7 @@ import { PlusOutlined, EditOutlined, DeleteOutlined, StarOutlined, CheckCircleOu
 import { AiSite } from '../types';
 
 const { Title, Text, Paragraph } = Typography;
+const isElectron = !!window.electronAPI;
 
 interface SiteManagerProps {
   onSitesUpdate: () => void;
@@ -106,9 +107,33 @@ const SiteManager: React.FC<SiteManagerProps> = ({ onSitesUpdate }) => {
   const loadSites = async () => {
     setLoading(true);
     try {
-      if (!window.electronAPI) {
-        message.error('Electron API 未就绪，请等待应用初始化');
-        setSites([]);
+      if (!isElectron) {
+        console.log('[SiteManager] 浏览器模式：使用模拟数据');
+        // 设置模拟AI网站数据
+        const mockSites = [
+          {
+            id: 1,
+            name: 'DeepSeek',
+            url: 'https://chat.deepseek.com',
+            selector: '[data-testid="conversation-turn-content"], .markdown-content, .message-content',
+            input_selector: 'textarea[placeholder*="输入"], textarea[placeholder*="Send"], #chat-input',
+            submit_selector: 'button[type="submit"], button:has-text("发送"), button:has-text("Send")',
+            enabled: true,
+            created_at: new Date().toISOString()
+          },
+          {
+            id: 2,
+            name: '通义千问',
+            url: 'https://tongyi.aliyun.com',
+            selector: '.message-content, .bubble-content, .chat-message',
+            input_selector: 'textarea[placeholder*="输入"], .chat-input textarea',
+            submit_selector: 'button[type="submit"], .send-button, button:has-text("发送")',
+            enabled: true,
+            created_at: new Date().toISOString()
+          }
+        ];
+        setSites(mockSites);
+        message.info('当前为浏览器模式，显示模拟网站数据');
         return;
       }
       const data = await window.electronAPI.getAiSites();
@@ -144,6 +169,28 @@ const SiteManager: React.FC<SiteManagerProps> = ({ onSitesUpdate }) => {
       return;
     }
 
+    // 在浏览器模式下，直接添加到本地状态
+    if (!isElectron) {
+      const newSite = {
+        id: Date.now(), // 临时ID
+        name: siteConfig.name,
+        url: siteConfig.url,
+        selector: siteConfig.selector,
+        input_selector: siteConfig.input_selector,
+        submit_selector: siteConfig.submit_selector,
+        enabled: siteConfig.status === '推荐',
+        config: siteConfig.config,
+        created_at: new Date().toISOString()
+      };
+      setSites(prev => [...prev, newSite]);
+      message.success(`已添加 ${siteConfig.name}（浏览器模式，数据仅本地）`);
+      onSitesUpdate();
+      if (siteConfig.status === '需登录') {
+        message.info(`请记得登录 ${siteConfig.name} 以确保正常使用`);
+      }
+      return;
+    }
+
     try {
       // 直接添加推荐的网站配置
       const siteData = {
@@ -155,11 +202,6 @@ const SiteManager: React.FC<SiteManagerProps> = ({ onSitesUpdate }) => {
         enabled: siteConfig.status === '推荐',
         config: siteConfig.config
       };
-
-      if (!window.electronAPI) {
-        message.error('Electron API 未就绪，请等待应用初始化');
-        return;
-      }
       
       await window.electronAPI.saveAiSite(siteData);
       message.success(`成功添加 ${siteConfig.name}`);
@@ -219,8 +261,11 @@ const SiteManager: React.FC<SiteManagerProps> = ({ onSitesUpdate }) => {
       content: '确定要删除这个AI网站配置吗？',
       onOk: async () => {
         try {
-          if (!window.electronAPI) {
-            message.error('Electron API 未就绪，请等待应用初始化');
+          if (!isElectron) {
+            // 浏览器模式下，从本地状态删除
+            setSites(prev => prev.filter(site => site.id !== siteId));
+            message.success('已删除（浏览器模式，数据仅本地）');
+            onSitesUpdate();
             return;
           }
           await window.electronAPI.deleteAiSite(siteId);
@@ -237,8 +282,13 @@ const SiteManager: React.FC<SiteManagerProps> = ({ onSitesUpdate }) => {
 
   const handleToggle = async (site: AiSite) => {
     try {
-      if (!window.electronAPI) {
-        message.error('Electron API 未就绪，请等待应用初始化');
+      if (!isElectron) {
+        // 浏览器模式下，更新本地状态
+        setSites(prev => prev.map(s => 
+          s.id === site.id ? { ...s, enabled: !s.enabled } : s
+        ));
+        message.success('状态已更新（浏览器模式，数据仅本地）');
+        onSitesUpdate();
         return;
       }
       const updatedSite = { ...site, enabled: !site.enabled };
@@ -273,8 +323,26 @@ const SiteManager: React.FC<SiteManagerProps> = ({ onSitesUpdate }) => {
         { ...editingSite, ...values, config } : 
         { ...values, config };
       
-      if (!window.electronAPI) {
-        message.error('Electron API 未就绪，请等待应用初始化');
+      // 浏览器模式处理
+      if (!isElectron) {
+        if (editingSite) {
+          // 更新现有站点
+          setSites(prev => prev.map(s => 
+            s.id === editingSite.id ? { ...s, ...siteData } : s
+          ));
+          message.success('已更新（浏览器模式，数据仅本地）');
+        } else {
+          // 添加新站点
+          const newSite = {
+            id: Date.now(),
+            ...siteData,
+            created_at: new Date().toISOString()
+          };
+          setSites(prev => [...prev, newSite]);
+          message.success('已添加（浏览器模式，数据仅本地）');
+        }
+        setModalVisible(false);
+        onSitesUpdate();
         return;
       }
       
