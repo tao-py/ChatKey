@@ -44,11 +44,14 @@ async function initDatabase() {
         submit_selector TEXT NOT NULL,
         enabled TINYINT(1) DEFAULT 1,
         config LONGTEXT,
+        provider_type VARCHAR(100) DEFAULT 'generic',
+        auth_config LONGTEXT,
+        version VARCHAR(20) DEFAULT '1.0',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_enabled (enabled),
-        INDEX idx_created_at (created_at)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        INDEX idx_provider_type (provider_type)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci
     `);
     console.log('ai_sites 表创建成功！');
     
@@ -75,10 +78,12 @@ async function initDatabase() {
         api_key VARCHAR(100) UNIQUE,
         port INT DEFAULT 8080,
         enabled TINYINT(1) DEFAULT 1,
+        rate_limit INT DEFAULT 100,
+        rate_window INT DEFAULT 60000,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_enabled (enabled)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci
     `);
     console.log('api_config 表创建成功！');
     

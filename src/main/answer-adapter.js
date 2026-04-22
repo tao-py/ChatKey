@@ -70,18 +70,20 @@ class AnswerAdapter {
     // 通义千问通常有清晰的结构
     const keyPoints = this.extractKeyPoints(text);
     const summary = this.generateSummary(text);
+    const codeBlocks = this.extractCodeBlocks(text);
     
     return {
       ...unifiedAnswer,
       formattedText: this.cleanText(text),
       summary,
       keyPoints,
+      codeBlocks,
       language: this.detectLanguage(text),
       confidence: this.calculateConfidence(text),
       metadata: {
         ...unifiedAnswer.metadata,
         format: 'structured',
-        hasCode: text.includes('```') || text.includes('代码'),
+        hasCode: codeBlocks.length > 0 || text.includes('代码'),
         hasMath: this.hasMathematicalNotation(text)
       }
     };
@@ -93,18 +95,20 @@ class AnswerAdapter {
     // 豆包的回答通常比较简洁
     const summary = this.generateSummary(text, 100); // 更短的摘要
     const keyPoints = this.extractKeyPoints(text, 3); // 较少的要点
+    const codeBlocks = this.extractCodeBlocks(text);
     
     return {
       ...unifiedAnswer,
       formattedText: this.cleanText(text),
       summary,
       keyPoints,
+      codeBlocks,
       language: this.detectLanguage(text),
       confidence: this.calculateConfidence(text),
       metadata: {
         ...unifiedAnswer.metadata,
         format: 'concise',
-        hasCode: text.includes('```') || text.includes('代码'),
+        hasCode: codeBlocks.length > 0 || text.includes('代码'),
         responseStyle: 'concise'
       }
     };
@@ -116,18 +120,20 @@ class AnswerAdapter {
     // 文心一言可能有特定的格式
     const keyPoints = this.extractKeyPoints(text);
     const summary = this.generateSummary(text);
+    const codeBlocks = this.extractCodeBlocks(text);
     
     return {
       ...unifiedAnswer,
       formattedText: this.cleanText(text),
       summary,
       keyPoints,
+      codeBlocks,
       language: this.detectLanguage(text),
       confidence: this.calculateConfidence(text),
       metadata: {
         ...unifiedAnswer.metadata,
         format: 'standard',
-        hasCode: text.includes('```') || text.includes('代码'),
+        hasCode: codeBlocks.length > 0 || text.includes('代码'),
         hasMath: this.hasMathematicalNotation(text)
       }
     };
@@ -141,6 +147,7 @@ class AnswerAdapter {
       formattedText: this.cleanText(text),
       summary: this.generateSummary(text),
       keyPoints: this.extractKeyPoints(text),
+      codeBlocks: this.extractCodeBlocks(text), // 添加这行
       language: this.detectLanguage(text),
       confidence: this.calculateConfidence(text),
       metadata: {
@@ -255,10 +262,18 @@ class AnswerAdapter {
     const chineseChars = text.match(/[\u4e00-\u9fff]/g);
     const englishChars = text.match(/[a-zA-Z]/g);
     
-    if (!chineseChars && !englishChars) return 'unknown';
+    const hasChinese = chineseChars && chineseChars.length > 0;
+    const hasEnglish = englishChars && englishChars.length > 0;
     
-    const chineseRatio = chineseChars ? chineseChars.length / text.length : 0;
-    const englishRatio = englishChars ? englishChars.length / text.length : 0;
+    // 如果同时包含中文和英文，标记为混合
+    if (hasChinese && hasEnglish) {
+      return 'mixed';
+    }
+    
+    if (!hasChinese && !hasEnglish) return 'unknown';
+    
+    const chineseRatio = hasChinese ? chineseChars.length / text.length : 0;
+    const englishRatio = hasEnglish ? englishChars.length / text.length : 0;
     
     if (chineseRatio > englishRatio) return 'zh';
     if (englishRatio > chineseRatio) return 'en';
@@ -266,12 +281,110 @@ class AnswerAdapter {
   }
   
   static detectCodeLanguage(code) {
-    // 简单的代码语言检测
-    if (code.includes('def ') || code.includes('import ')) return 'python';
-    if (code.includes('function') || code.includes('const ') || code.includes('let ')) return 'javascript';
-    if (code.includes('public class') || code.includes('System.out.println')) return 'java';
-    if (code.includes('#include') || code.includes('int main')) return 'c++';
-    if (code.includes('<?php')) return 'php';
+    // 增强的代码语言检测
+    const trimmed = code.trim();
+    
+    // Python 特征
+    if (/\bdef\b/.test(trimmed) || 
+        /\bimport\s+\w+/.test(trimmed) || 
+        /\bfrom\s+\w+\s+import/.test(trimmed) ||
+        /print\(/.test(trimmed) ||
+        /^\s*#!.*python/.test(trimmed)) {
+      return 'python';
+    }
+    
+    // JavaScript/TypeScript 特征
+    if (/\bfunction\s*\w*\s*\(/.test(trimmed) || 
+        /const\s+\w+\s*[=;]/.test(trimmed) || 
+        /let\s+\w+\s*[=;]/.test(trimmed) ||
+        /var\s+\w+\s*[=;]/.test(trimmed) ||
+        /=>\s*{?/.test(trimmed) ||
+        /console\.(log|warn|error)/.test(trimmed)) {
+      return 'javascript';
+    }
+    
+    // Java 特征
+    if (/public\s+class\s+\w+/.test(trimmed) || 
+        /System\.out\.println/.test(trimmed) ||
+        /private\s+\w+\s+\w+/.test(trimmed) ||
+        /public\s+static\s+void\s+main/.test(trimmed)) {
+      return 'java';
+    }
+    
+    // C++ 特征
+    if (/#include\s+<[\w.]+>/.test(trimmed) || 
+        /#include\s+"[\w.]+" /.test(trimmed) ||
+        /int\s+main\s*\(/.test(trimmed) ||
+        /std::\w+/.test(trimmed) ||
+        /cout\s*<</.test(trimmed)) {
+      return 'c++';
+    }
+    
+    // C# 特征
+    if (/using\s+System/.test(trimmed) || 
+        /namespace\s+\w+/.test(trimmed) ||
+        /Console\.WriteLine/.test(trimmed)) {
+      return 'csharp';
+    }
+    
+    // PHP 特征
+    if (/<\?php/.test(trimmed) || 
+        /\$\w+\s*=/.test(trimmed) ||
+        /echo\s+/.test(trimmed)) {
+      return 'php';
+    }
+    
+    // Ruby 特征
+    if (/def\s+\w+/.test(trimmed) && (/end\b/.test(trimmed) || /puts\b/.test(trimmed)) ||
+        /^\s*#!.*ruby/.test(trimmed) ||
+        /require\s+['"]\w+['"]/.test(trimmed)) {
+      return 'ruby';
+    }
+    
+    // Go 特征
+    if (/package\s+main/.test(trimmed) || 
+        /func\s+main\s*\(/.test(trimmed) ||
+        /fmt\.Print/.test(trimmed) ||
+        /import\s+\(/.test(trimmed)) {
+      return 'go';
+    }
+    
+    // Rust 特征
+    if (/fn\s+main\s*\(/.test(trimmed) || 
+        /let\s+mut\s+\w+/.test(trimmed) ||
+        /println!/.test(trimmed) ||
+        /use\s+std/.test(trimmed)) {
+      return 'rust';
+    }
+    
+    // Shell/Bash 特征
+    if (/^#!\/(?:bin\/bash|bin\/sh|bin\/zsh)/.test(trimmed) || 
+        /^\s*#.*?\n.*?echo\s+/.test(trimmed) ||
+        /\$\s+[a-zA-Z_]\w*=/.test(trimmed)) {
+      return 'bash';
+    }
+    
+    // SQL 特征
+    if (/SELECT\s+.+?\s+FROM/i.test(trimmed) || 
+        /INSERT\s+INTO/i.test(trimmed) ||
+        /CREATE\s+TABLE/i.test(trimmed) ||
+        /UPDATE\s+\w+\s+SET/i.test(trimmed)) {
+      return 'sql';
+    }
+    
+    // JSON/YAML 特征
+    if (/^\s*{[\s\S]*}\s*$/.test(trimmed) || 
+        /^\s*\[[\s\S]*\]\s*$/.test(trimmed)) {
+      return 'json';
+    }
+    
+    // HTML/XML 特征
+    if (/<[a-z][\s\S]*>/.test(trimmed) && /<\/[a-z]+>/.test(trimmed)) {
+      if (/<html/.test(trimmed)) return 'html';
+      if (/<svg/.test(trimmed)) return 'svg';
+      return 'xml';
+    }
+    
     return 'unknown';
   }
   

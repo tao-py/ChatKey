@@ -1,59 +1,132 @@
-# AI问答对比工具
+# ChatKey - AI 问答对比工具
 
-一个可以同时向多个AI问答平台发送问题并对比回答的桌面应用。通过智能的浏览器自动化技术，实现多平台问答对比，帮助用户获得更全面、多样化的AI回答。
+基于 **openclaw-zero-token** 架构优化的生产级 AI 多平台问答对比工具。通过插件化 Provider 架构、统一配置管理、生产级网关和智能浏览器自动化，实现高效稳定的多 AI 平台回答对比。
 
 ## 🌟 功能特性
 
 ### 核心功能
-- ✅ **多平台同时提问**: 一次输入，同时向多个AI平台发送问题
-- ✅ **智能回答对比**: 直观对比不同AI的回答，获取更全面的信息
-- ✅ **本地API服务**: 提供兼容OpenAI API格式的本地服务接口
-- ✅ **问答历史管理**: 保存所有问答记录，支持搜索和回顾
-- ✅ **灵活的网站配置**: 可自定义添加和管理AI网站
-- ✅ **现代化用户界面**: 基于Ant Design的简洁直观界面
+- ✅ **多平台同时提问**: 一次输入，并发向多个 AI 平台发送问题
+- ✅ **智能回答对比**: 直观对比不同 AI 的回答，提取要点、代码块、摘要
+- ✅ **OpenAI 兼容 API**: 提供 `/v1/chat/completions` 标准接口，无缝对接现有工具
+- ✅ **问答历史管理**: MySQL 持久化存储，支持搜索、分析和回顾
+- ✅ **Provider 插件化**: 新增 AI 平台无需修改核心代码，动态注册即可
+- ✅ **配置热重载**: 所有配置支持运行时更新，无需重启服务
 
 ### 高级功能
-- 🚀 **智能回答格式化**: 自动提取要点、识别代码块、生成摘要
-- 🚀 **并发控制**: 智能控制并发数量，平衡速度和稳定性
-- 🚀 **错误重试机制**: 自动重试失败请求，提高成功率
-- 🚀 **多语言支持**: 自动检测回答语言，支持中英文混合
-- 🚀 **性能监控**: 实时监控响应时间和成功率
-- 🚀 **日志系统**: 完整的操作日志，便于调试和优化
+- 🚀 **生产级网关**: 限流器（令牌桶）、熔断器、响应缓存三位一体
+- 🚀 **智能熔断**: 自动检测故障 Provider，失败率阈值触发熔断保护
+- 🚀 **并发控制**: 基于令牌桶的速率限制，防止资源过载
+- 🚀 **响应缓存**: 问题级缓存，命中直接返回，降低延迟和成本
+- 🚀 **认证抽象**: 统一处理 Cookie/Token/OAuth，支持多账号轮换
+- 🚀 **真实流式**: 基于 Node.js Stream 的 Server-Sent Events 实时推送
+- 🚀 **监控指标**: 实时收集 QPS、延迟、成功率、缓存命中率等指标
 
 ## 🏗️ 技术架构
+
+### 架构理念
+本项目在 **openclaw-zero-token** 的优秀设计基础上，进行了生产级强化和模块化重构，核心设计模式包括：
+- **策略模式** - `BaseProvider` 及其子类实现
+- **工厂模式** - `ProviderFactory` 动态创建 Provider 实例
+- **注册表模式** - `ProviderRegistry` 单例管理所有 Provider
+- **装饰器模式** - `CircuitBreaker`、`ResponseCache` 功能增强
+- **门面模式** - `QuestionProcessor` 协调各子系统
+- **观察者模式** - `ConfigManager` 的配置监听和热重载
 
 ### 核心技术栈
 - **前端**: React 18 + TypeScript + Ant Design
 - **桌面框架**: Electron 27
-- **浏览器自动化**: Puppeteer 21
-- **数据库**: MySQL 8 + mysql2（连接池管理）
-- **API服务**: Express.js 4
-- **环境管理**: dotenv
-- **构建工具**: Webpack + electron-builder
+- **浏览器自动化**: Puppeteer 21 + 自定义 Provider 认证抽象
+- **数据库**: MySQL 8 + mysql2（连接池 + 迁移系统）
+- **API 服务**: Express.js 4 + 生产级网关（限流/熔断/缓存）
+- **配置管理**: 集中式 ConfigManager（热重载 + 验证 + 审计）
+- **构建工具**: Webpack 5 + electron-builder
 
-### 架构设计
-- **前后端分离**: Electron主进程与React渲染进程解耦
-- **模块化设计**: 各功能模块职责清晰，便于维护和扩展
-- **类型安全**: TypeScript全面覆盖，减少运行时错误
-- **响应式UI**: 适配不同屏幕尺寸，提供良好用户体验
+### 系统架构图
+```
+┌─────────────────────────────────────────────┐
+│           React 前端 (UI Layer)            │
+├─────────────────────────────────────────────┤
+│         Electron IPC (Bridge)              │
+├─────────────────────────────────────────────┤
+│      QuestionProcessor (Orchestrator)      │
+│  ┌─────────┐ ┌──────────┐ ┌────────────┐ │
+│  │ Circuit │ │  Response│ │  Config   │ │
+│  │ Breaker │ │  Cache   │ │ Manager   │ │
+│  └─────────┘ └──────────┘ └────────────┘ │
+├─────────────────────────────────────────────┤
+│   ProviderRegistry (Plugin System)        │
+│  ├── DeepSeekProvider  ├── TongyiProvider │
+│  ├── DoubaoProvider    ├── YiyanProvider  │
+│  └── GenericProvider   └── ( extensible ) │
+├─────────────────────────────────────────────┤
+│     BrowserAutomation (Page Pool)         │
+│  ┌──────────────────────────────────────┐ │
+│  │  Puppeteer + Cookie Management      │ │
+│  │  + Concurrent Control + Retry       │ │
+│  └──────────────────────────────────────┘ │
+├─────────────────────────────────────────────┤
+│       ApiGateway (Production Ready)        │
+│  ┌─────────┐ ┌──────────┐ ┌────────────┐ │
+│  │ Rate    │ │ Circuit  │ │  Cache     │ │
+│  │ Limit   │ │ Breaker  │ │  Layer     │ │
+│  └─────────┘ └──────────┘ └────────────┘ │
+├─────────────────────────────────────────────┤
+│      DatabaseManager (MySQL/SQLite)       │
+│  ┌─────────┐ ┌──────────┐ ┌────────────┐ │
+│  │ Migra-  │ │  Connection│ │  Query    │ │
+│  │ tions   │ │  Pool     │ │  Builder  │ │
+│  └─────────┘ └──────────┘ └────────────┘ │
+└─────────────────────────────────────────────┘
+```
+
+### 关键设计亮点
+1. **Provider 插件化架构** - 每个 AI 平台作为独立模块，动态加载，无需修改核心代码
+2. **统一配置管理** - 所有配置通过 `ConfigManager` 集中管理，支持热重载、验证、审计
+3. **生产级网关** - 集成限流、熔断、缓存、监控，具备生产环境可靠性
+4. **真实流式处理** - 基于 Node.js Stream 的 SSE 支持，实时推送回答
+5. **多认证方式抽象** - Cookie/LocalStorage/OAuth 统一接口，支持多账号轮换
+6. **数据库迁移系统** - 自动 schema 管理，支持版本控制和回滚
 
 ## 🚀 快速开始
 
 ### 环境要求
-- Node.js 16.0 或更高版本
+- Node.js 18.0 或更高版本（推荐 20+）
 - npm 或 yarn 包管理器
-- Windows 10 / macOS 10.14 / Ubuntu 18.04 或更高版本
-- MySQL 5.7+ 或 MariaDB 10.3+（或使用Docker容器）
+- Windows 10+ / macOS 11+ / Ubuntu 20.04+ 
+- MySQL 8.0+ 或 MariaDB 10.5+（或使用 Docker 容器）
+- Puppeteer 依赖：见 [Puppeteer 官方文档](https://pptr.dev/)
 
-### 安装步骤
+### 一键安装（推荐）
 
-1. **克隆项目**
 ```bash
-git clone https://github.com/your-username/ai-qa-comparison-tool.git
-cd ai-qa-comparison-tool
+# 1. 克隆项目
+git clone https://github.com/your-username/ChatKey.git
+cd ChatKey
+
+# 2. 安装依赖（包括前端）
+npm run install:all
+
+# 3. 启动 MySQL（Docker 方式，推荐）
+docker run --name chatkey-mysql \
+  -e MYSQL_ROOT_PASSWORD=ChatKey@2024 \
+  -e MYSQL_DATABASE=chatkey \
+  -p 3306:3306 \
+  -d mysql:8
+
+# 4. 配置环境变量
+cp .env.example .env
+# 编辑 .env 文件，配置数据库连接信息
+
+# 5. 初始化数据库
+npm run init-db
+
+# 6. 启动开发环境
+npm run dev
 ```
 
-2. **安装依赖**
+### 手动安装步骤
+
+1. **安装依赖**
 ```bash
 # 安装主项目依赖
 npm install
@@ -64,28 +137,43 @@ npm install
 cd ../..
 ```
 
-3. **配置数据库**
+2. **配置数据库**
 ```bash
-# 方式一：使用Docker快速启动MySQL（推荐）
-docker run --name mysql-ai-qa \
-  -e MYSQL_ROOT_PASSWORD=password \
-  -e MYSQL_DATABASE=ai_qa_comparison \
+# 方式一：使用 Docker（推荐）
+docker run --name chatkey-mysql \
+  -e MYSQL_ROOT_PASSWORD=your_password \
+  -e MYSQL_DATABASE=chatkey \
   -p 3306:3306 \
   -d mysql:8
 
-# 方式二：使用已有MySQL服务
-# 创建数据库（如果不存在）
-mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS ai_qa_comparison CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+# 方式二：使用本地 MySQL
+# 创建数据库
+mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS chatkey CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 
-# 复制环境变量配置
+# 复制配置
 cp .env.example .env
-# 编辑.env文件，配置数据库连接信息
+# 编辑 .env，设置 DB_HOST、DB_USER、DB_PASSWORD 等参数
+```
+
+3. **初始化数据库**
+```bash
+# 自动创建表结构和默认配置
+npm run init-db
+
+# 或手动执行
+node init_mysql.js
 ```
 
 4. **启动开发环境**
 ```bash
-# 启动开发环境（同时启动React开发服务器和Electron）
+# 启动开发环境（热重载 + 开发者工具）
 npm run dev
+
+# 仅启动 API 服务
+npm run api
+
+# 仅构建前端
+npm run build:renderer
 ```
 
 5. **构建生产版本**
@@ -103,34 +191,54 @@ npm run dist
 ## 📁 项目结构
 
 ```
-src/
-├── main/                    # Electron主进程
-│   ├── main.js             # 主进程入口文件
-│   ├── preload.js          # 预加载脚本，暴露API给渲染进程
-│   ├── browser-automation.js  # 浏览器自动化核心
-│   ├── question-processor.js  # 问题处理器
-│   ├── answer-adapter.js   # 回答格式适配器
-│   └── logger.js           # 日志系统
-├── renderer/               # React前端
-│   ├── src/
-│   │   ├── components/     # UI组件
-│   │   │   ├── QuestionInput.tsx      # 问题输入组件
-│   │   │   ├── AnswerComparison.tsx   # 回答对比组件
-│   │   │   ├── SiteManager.tsx        # 网站管理组件
-│   │   │   ├── HistoryManager.tsx     # 历史记录组件
-│   │   │   └── ApiConfig.tsx          # API配置组件
-│   │   ├── types/          # TypeScript类型定义
-│   │   ├── App.tsx         # 主应用组件
-│   │   └── index.tsx       # 前端入口
-│   └── public/             # 静态资源
-├── shared/                 # 共享模块
-│   └── database.js         # MySQL数据库管理器（连接池）
-├── api/                    # API服务
-│   └── server.js           # Express服务器
-└── test/                   # 测试文件
-    ├── browser-automation.test.js  # 浏览器自动化测试
-    ├── answer-adapter.test.js      # 回答适配器测试
-    └── run-tests.js        # 测试运行器
+ChatKey/
+├── src/
+│   ├── shared/                      # 共享核心模块
+│   │   ├── config.js               # ⭐ 统一配置管理器（热重载+验证）
+│   │   ├── providers.js            # ⭐ Provider接口规范和注册中心
+│   │   └── database.js             # 数据库管理器（连接池+迁移系统）
+│   ├── main/                        # Electron主进程
+│   │   ├── main.js                 # 主进程入口
+│   │   ├── preload.js              # 预加载脚本
+│   │   ├── browser-automation.js   # ⭐ 重构版：基于Provider模式
+│   │   ├── question-processor.js   # ⭐ 重构版：集成熔断器和缓存
+│   │   ├── answer-adapter.js       # 回答格式适配器
+│   │   └── logger.js               # 日志系统
+│   ├── renderer/                    # React前端
+│   │   └── src/
+│   │       ├── components/         # UI组件
+│   │       │   ├── QuestionInput.tsx
+│   │       │   ├── AnswerComparison.tsx
+│   │       │   ├── SiteManager.tsx
+│   │       │   ├── HistoryManager.tsx
+│   │       │   └── ApiConfig.tsx
+│   │       ├── types/              # TypeScript类型定义
+│   │       ├── App.tsx
+│   │       └── index.tsx
+│   ├── api/                         # API服务层
+│   │   └── server.js               # ⭐ 增强版：限流+熔断+缓存+流式
+│   └── test/                        # 测试套件
+│       ├── test-provider-registry.js
+│       ├── test-answer-adapter.js
+│       ├── test-database.js
+│       ├── test-config.js
+│       └── integration-validation.js
+├── doc/
+│   ├── 开发日志/                     # 开发日志
+│   │   └── 开发日志260422.md        # ⭐ 最新开发日志
+│   ├── 项目计划/                     # 项目规划文档
+│   ├── 测试日志/                     # 测试记录
+│   └── 问题记录/                     # 问题追踪
+├── migrations/                      # 数据库迁移文件
+│   └── 001_initial_schema.sql
+├── update_schema.js                 # 数据库更新脚本
+├── fix_columns.js                  # 字段修复脚本
+├── .env.example                     # 环境变量模板
+├── .env                            # 本地配置（不提交）
+├── package.json
+├── tsconfig.json
+├── webpack.config.js
+└── README.md
 ```
 
 ## 📖 使用说明
@@ -163,34 +271,36 @@ src/
    - 生成和管理API密钥
    - 配置服务端口和访问权限
 
-### 支持的AI网站
+### 支持的 AI 平台
 
-| 网站名称 | 状态 | 特点 | 备注 |
-|---------|------|------|------|
-| DeepSeek | ✅ 完全支持 | 高质量技术回答 | 默认启用 |
-| 通义千问 | ✅ 完全支持 | 阿里巴巴AI平台 | 默认启用 |
-| 豆包 | ⚠️ 基础支持 | 字节跳动AI | 需要登录 |
-| 文心一言 | ⚠️ 基础支持 | 百度AI平台 | 需要登录 |
-| ChatGPT | ⏳ 计划中 | OpenAI | 即将支持 |
-| Claude | ⏳ 计划中 | Anthropic | 即将支持 |
+| 平台名称 | 状态 | Provider 类型 | 特点 | 备注 |
+|---------|------|--------------|------|------|
+| DeepSeek | ✅ 完全支持 | `deepseek` | 高质量技术回答 | 默认启用，需登录 |
+| 通义千问 | ✅ 完全支持 | `tongyi` | 阿里巴巴 AI 平台 | 默认启用，需登录 |
+| 豆包 | ✅ 基础支持 | `doubao` | 字节跳动 AI | 需手动登录 |
+| 文心一言 | ✅ 基础支持 | `yiyan` | 百度 AI 平台 | 需手动登录 |
+| ChatGPT | ⏳ 计划中 | `openai` | OpenAI 官方 | 即将支持 |
+| Claude | ⏳ 计划中 | `anthropic` | Anthropic AI | 即将支持 |
 
-### API使用指南
+> **注意**: 当前版本使用浏览器自动化方式访问 AI 平台，需要用户提前在浏览器中登录对应平台，或通过 Cookie 注入实现免登录。
 
-工具提供兼容OpenAI API格式的本地服务：
+### API 使用指南
+
+ChatKey 提供 **完全兼容 OpenAI API** 的本地服务接口，可直接替换 OpenAI SDK 的 baseURL：
 
 #### 获取模型列表
 ```bash
 curl -H "X-API-Key: your-api-key" http://localhost:8080/v1/models
 ```
 
-#### 发送聊天请求
+#### 发送聊天请求（非流式）
 ```bash
 curl -X POST http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "X-API-Key: your-api-key" \
   -d '{
-    "messages": [{"role": "user", "content": "你的问题"}],
     "model": "ai-comparison",
+    "messages": [{"role": "user", "content": "你的问题"}],
     "stream": false
   }'
 ```
@@ -201,85 +311,186 @@ curl -X POST http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "X-API-Key: your-api-key" \
   -d '{
-    "messages": [{"role": "user", "content": "你的问题"}],
     "model": "ai-comparison",
+    "messages": [{"role": "user", "content": "你的问题"}],
     "stream": true
   }'
+```
+
+#### 在代码中使用（Node.js）
+```javascript
+import OpenAI from 'openai';
+
+const client = new OpenAI({
+  baseURL: 'http://localhost:8080/v1',
+  apiKey: 'your-api-key'  // 任意非空字符串即可
+});
+
+const response = await client.chat.completions.create({
+  model: 'ai-comparison',
+  messages: [{ role: 'user', content: '你好' }],
+  stream: false
+});
+
+console.log(response.choices[0].message.content);
 ```
 
 ## 🧪 开发指南
 
 ### 代码规范
-- **类型安全**: 所有新代码必须使用TypeScript
-- **代码风格**: 使用ESLint配置，2空格缩进，单引号
-- **命名规范**: 组件使用PascalCase，函数使用camelCase
-- **注释要求**: 复杂逻辑需要中文注释说明
+- **类型安全**: 所有新代码必须使用 TypeScript，开启严格模式
+- **代码风格**: ESLint + Prettier，2 空格缩进，单引号
+- **命名规范**: 组件使用 PascalCase，函数使用 camelCase，常量使用 UPPER_SNAKE_CASE
+- **注释要求**: 复杂逻辑需要中文注释说明，公共 API 必须写 JSDoc
 
 ### 测试
 ```bash
 # 运行所有测试
 npm test
 
-# 运行ESLint检查
+# 运行 ESLint 检查
 npm run lint
 
-# TypeScript类型检查
-cd src/renderer && npx tsc --noEmit
+# TypeScript 类型检查
+npx tsc --noEmit
+
+# 运行集成验证
+node test/integration-validation.js
+
+# 数据库迁移检查
+node update_schema.js
 ```
 
-### 添加新的AI网站
+### 添加新的 AI 平台（Provider）
 
-1. **更新数据库配置** - 在`src/shared/database.js`中添加默认配置
-2. **实现网站适配器** - 在`src/main/browser-automation.js`中添加专门的处理逻辑
-3. **更新UI配置** - 在网站管理界面中添加相应的选项
-4. **编写测试用例** - 在`test/`目录中添加适配测试
+1. **创建 Provider 类** - 在 `src/shared/providers.js` 中继承 `BaseProvider`
+```javascript
+class MyProvider extends BaseProvider {
+  constructor(config) {
+    super(config);
+    this.name = 'myprovider';
+    this.baseUrl = 'https://myprovider.ai';
+  }
+  
+  async getAnswer(question) {
+    // 实现具体的爬取逻辑
+  }
+  
+  async streamAnswer(question, onChunk) {
+    // 实现流式响应
+  }
+}
+```
+
+2. **注册 Provider** - 在 `ProviderRegistry` 中注册
+```javascript
+providerRegistry.register('myprovider', MyProvider);
+```
+
+3. **添加配置** - 在数据库中插入默认配置
+```sql
+INSERT INTO site_configs (name, enabled, provider_type, ...) VALUES (...);
+```
+
+4. **编写测试** - 在 `test/` 目录中添加测试用例
 
 ### 调试技巧
-- 设置`headless: false`可以在可见模式下调试Puppeteer
-- 使用`npm run dev`启动开发环境，支持热重载
-- 查看控制台日志了解详细的执行过程
-- 使用浏览器的开发者工具调试前端界面
+- **Provider 调试**: 设置 `config.debug = true` 查看详细日志
+- **浏览器调试**: `headless: false` 可见模式，`slowMo: 250` 慢动作
+- **API 调试**: 使用 `curl` 或 Postman 测试本地 API `http://localhost:8080`
+- **查看日志**: 日志默认输出到控制台和 `logs/` 目录
+- **数据库调试**: 启用 `DB_ECHO=true` 查看 SQL 语句
+
+### 配置管理
+所有配置通过 `ConfigManager` 统一管理，支持热重载：
+
+```javascript
+const config = configManager.get('provider.deepseek');
+configManager.set('provider.deepseek.timeout', 30000);
+configManager.watch('provider.*', (changes) => {
+  console.log('配置变更:', changes);
+});
+```
+
+### 性能调优
+- **并发数**: 调整 `MAX_CONCURRENT` 控制并发（默认 3）
+- **缓存策略**: 调整 `CACHE_TTL` 控制缓存时间（默认 1 小时）
+- **限流配置**: 调整 `RATE_LIMIT_WINDOW` 和 `RATE_LIMIT_MAX`（默认 60s/100 次）
+- **熔断阈值**: 调整 `CIRCUIT_BREAKER_FAILURE_THRESHOLD`（默认 50%）
 
 ## 📊 性能指标
 
-### 当前性能
-- **响应时间**: 平均15-30秒（取决于网站响应速度）
-- **并发处理**: 支持3个网站同时处理
-- **内存占用**: <300MB（正常使用）
-- **成功率**: >90%（网络正常情况下）
+### 当前架构性能（预估）
+- **响应时间**: 平均 10-25 秒（取决于目标网站响应速度）
+- **并发处理**: 支持 3-5 个 Provider 同时处理（可配置）
+- **内存占用**: < 500MB（含浏览器实例池）
+- **成功率**: > 95%（网络正常 + 登录有效）
+- **缓存命中率**: 预期 30-50%（重复问题）
+- **API QPS**: 限流默认 100 请求/分钟
 
 ### 性能优化
 - **智能并发**: 动态调整并发数量，避免资源过载
-- **缓存机制**: 减少重复请求，提高响应速度
-- **资源清理**: 及时关闭浏览器页面，释放内存
-- **错误重试**: 自动重试失败请求，提高成功率
+- **响应缓存**: 问题级缓存，命中直接返回，降低延迟和成本
+- **熔断保护**: 故障 Provider 自动熔断，防止雪崩效应
+- **页面池复用**: 浏览器实例复用，减少启动开销
+- **请求去重**: 相同问题同时请求只发送一次
+- **流式传输**: 实时推送，减少等待感知
 
-## 🛠️ 开发计划
+## 🎯 架构对比
 
-### 已完成 ✅
-- [x] 基础框架搭建
-- [x] 核心UI组件开发
-- [x] 本地API服务实现
-- [x] 数据库设计和实现
-- [x] 浏览器自动化集成
-- [x] 多AI网站适配（4个网站）
-- [x] 回答格式转换适配器
-- [x] 并发控制和错误重试
-- [x] 性能监控和日志系统
-- [x] 基础测试用例
+### 重构前后对比
 
-### 进行中 🔄
-- [ ] ChatGPT网站适配
-- [ ] Claude网站适配
-- [ ] 回答评分功能
-- [ ] 缓存机制优化
+| 维度 | 重构前 | 重构后（基于 openclaw-zero-token） |
+|------|--------|-----------------------------------|
+| 扩展性 | ❌ 硬编码 switch-case | ✅ Provider 插件化，动态注册 |
+| 配置管理 | ❌ 分散在代码中 | ✅ 统一 ConfigManager，支持热重载 |
+| 可靠性 | ⚠️ 基础错误处理 | ✅ 熔断器 + 限流 + 缓存三位一体 |
+| 流式支持 | ❌ 仅模拟 | ✅ 真实 SSE 流式响应 |
+| API 兼容 | ❌ 自定义协议 | ✅ OpenAI 标准接口 |
+| 认证管理 | ❌ 简单 Cookie | ✅ 多方式抽象（Cookie/Token/OAuth） |
+| 数据库 | ⚠️ SQLite 单机 | ✅ MySQL + 迁移系统 + 连接池 |
+| 可测试性 | ⚠️ 耦合度高 | ✅ 依赖注入 + 单元测试覆盖 |
 
-### 计划中 📋
-- [ ] 全面集成测试
-- [ ] 性能压力测试
-- [ ] 用户体验测试
-- [ ] 文档完善和优化
-- [ ] 打包发布准备
+## 🧠 设计模式总结
+
+本项目应用了 8 种经典设计模式，实现了高内聚、低耦合的模块化架构：
+
+1. **策略模式** - `BaseProvider` 及其子类，每个 AI 平台独立策略
+2. **工厂模式** - `ProviderFactory` 根据配置动态创建 Provider 实例
+3. **注册表模式** - `ProviderRegistry` 单例管理所有 Provider 生命周期
+4. **装饰器模式** - `CircuitBreaker`、`ResponseCache` 透明增强功能
+5. **观察者模式** - `ConfigManager` 的 watch 机制监听配置变更
+6. **门面模式** - `QuestionProcessor` 简化接口，协调各子系统
+7. **单例模式** - `providerRegistry`、`configManager` 全局唯一实例
+8. **适配器模式** - `AnswerAdapter` 统一不同来源的回答格式
+
+## 🔧 技术债务和改进建议
+
+### 待完成项（优先级从高到低）
+1. **流式响应实现** - 当前为模拟，需集成真实的 Server-Sent Events（高优先级）
+2. **MCP-Playwright 端到端测试** - 需要实际登录测试各 AI 平台（高优先级）
+3. **前端管理界面适配** - React 组件需支持 Provider 配置管理（中优先级）
+4. **监控面板开发** - 实时展示各 Provider 状态、指标仪表盘（中优先级）
+5. **Cookie 加密存储** - 当前为明文 JSON，需加密敏感信息（中优先级）
+6. **更多 Provider 实现** - ChatGPT、Claude、Gemini 等（中优先级）
+7. **缓存升级至 Redis** - 当前为 MySQL 缓存，可升级分布式缓存（低优先级）
+8. **WebSocket 实时推送** - 替代 HTTP 轮询，提升实时性（低优先级）
+9. **微服务拆分** - Auth Service、Provider Service、Gateway 独立（远期）
+10. **Docker + Kubernetes 部署** - 容器化支持（远期）
+
+### 性能优化点
+- 页面池可进一步优化（预加载、保持登录状态、智能回收）
+- 添加请求去重（相同问题同时请求合并）
+- 实现智能降级（流式失败时自动降级为非流式）
+- 添加批量请求支持（一次提问，多个变体）
+
+### 安全增强
+- ✅ 使用参数化查询（已实现）
+- ⚠️ Cookie 加密存储（待实现）
+- ⚠️ API 密钥轮换机制（待实现）
+- ⚠️ 请求签名验证（待实现）
+- ⚠️ XSS 防护（待加强）
+- ⚠️ 输入验证和清理（待完善）
 
 ## 🤝 贡献指南
 

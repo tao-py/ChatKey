@@ -1,282 +1,356 @@
+/**
+ * Electron 主进程 - 重构版
+ * 使用新的 Provider 架构和增强的 API 网关
+ */
+
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
-// 加载环境变量
 require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
-const { startApiServer } = require('../api/server');
+
+const { ApiGateway } = require('../api/server');
 const { DatabaseManager } = require('../shared/database');
-const { QuestionProcessor } = require('./question-processor');
+const { QuestionProcessor } = require('../main/question-processor');
+const { Logger } = require('../main/logger');
 
 class ElectronApp {
   constructor() {
     this.mainWindow = null;
+    this.apiGateway = null;
+    this.questionProcessor = null;
     this.dbManager = new DatabaseManager();
-    this.apiServer = null;
-    this.questionProcessor = new QuestionProcessor();
-    this.browserAutomation = null; // 直接访问浏览器自动化实例
+    this.logger = new Logger('ElectronApp');
   }
 
   async init() {
+    this.logger.info('Initializing ElectronApp');
+    
     try {
+      // 初始化数据库
       await this.dbManager.init();
-      console.log('数据库初始化成功');
-    } catch (error) {
-      console.error('数据库初始化失败:', error);
-      // 创建用户友好的错误提示
-      console.log('请检查数据库配置，确保数据库服务正在运行');
+      this.logger.info('Database initialized');
       
-      // 创建一个错误窗口提示用户
-      const showErrorWindow = () => {
-        this.mainWindow = new BrowserWindow({
-          width: 600,
-          height: 400,
-          webPreferences: {
-            nodeIntegration: false,
-            contextIsolation: true,
-            preload: path.join(__dirname, 'preload.js')
-          }
-        });
-        
-        this.mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <meta charset="UTF-8">
-              <title>AI问答对比工具 - 错误</title>
-              <style>
-                body { 
-                  font-family: Arial, sans-serif; 
-                  padding: 20px; 
-                  background-color: #f5f5f5;
-                }
-                .container { 
-                  background: white; 
-                  padding: 20px; 
-                  border-radius: 8px; 
-                  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-                }
-                code { 
-                  background: #f4f4f4; 
-                  padding: 2px 4px; 
-                  border-radius: 3px; 
-                }
-              </style>
-            </head>
-            <body>
-              <div class="container">
-                <h2>❌ 应用启动失败</h2>
-                <p><strong>错误:</strong> ${error.message}</p>
-                <p>这通常是由于数据库配置问题导致的。</p>
-                
-                <h3>解决方法:</h3>
-                <ol>
-                  <li><strong>如果使用 MySQL</strong>:</li>
-                  <ul>
-                    <li>确保 MySQL 服务正在运行</li>
-                    <li>检查 .env 文件中的数据库配置</li>
-                    <li>确保用户名密码正确</li>
-                  </ul>
-                  
-                  <li><strong>如果想切换到 SQLite</strong>:</li>
-                  <ul>
-                    <li>修改 .env 文件: <code>DB_TYPE=sqlite</code></li>
-                    <li>添加: <code>DB_PATH=./data/ai_qa.db</code></li>
-                  </ul>
-                </ol>
-                
-                <p>请修复配置后重启应用。</p>
-              </div>
-            </body>
-          </html>
-        `)}`);
-      };
+      // 创建窗口
+      this.createWindow();
       
-      // 显示错误窗口而不是让应用崩溃
-      showErrorWindow();
-      return;
-    }
-    
-    try {
-      await this.questionProcessor.init();
-      console.log('问题处理器初始化成功');
-      // 保存对浏览器自动化实例的引用
-      this.browserAutomation = this.questionProcessor.automation;
+      // 设置 IPC 处理器
+      this.setupIpcHandlers();
+      
+      this.logger.info('ElectronApp initialized successfully');
+      
     } catch (error) {
-      console.error('问题处理器初始化失败:', error);
+      this.logger.error('Failed to initialize ElectronApp:', error);
+      this.showErrorWindow(error);
     }
-    
-    this.apiServer = startApiServer();
-    this.createWindow();
-    this.setupIpcHandlers();
   }
 
   createWindow() {
-    console.log('正在创建浏览器窗口...');
-    console.log('NODE_ENV:', process.env.NODE_ENV);
+    this.logger.info('Creating main window...');
     
     const preloadPath = path.join(__dirname, 'preload.js');
-    
-    // 检查预加载脚本是否存在
-    console.log('预加载脚本路径:', preloadPath);
-    const fs = require('fs');
-    if (fs.existsSync(preloadPath)) {
-      console.log('预加载脚本文件存在');
-      const content = fs.readFileSync(preloadPath, 'utf8');
-      console.log('预加载脚本大小:', content.length, '字符');
-    } else {
-      console.error('预加载脚本文件不存在！');
-    }
     
     this.mainWindow = new BrowserWindow({
       width: 1400,
       height: 900,
+      minWidth: 1200,
+      minHeight: 700,
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
         preload: preloadPath,
-        // 为开发环境暂时保留 webSecurity: false，但增加安全策略
-        webSecurity: false, // 临时禁用web安全以进行测试
-        allowRunningInsecureContent: false, // 禁止运行不安全内容
-        sandbox: false, // 禁用沙箱以确保预加载脚本能正常访问Node.js API
-        worldSafeExecuteJavaScript: true // 确保JavaScript在不同世界间安全执行
+        webSecurity: true, // 生产环境启用
+        allowRunningInsecureContent: false,
+        sandbox: false,
+        worldSafeExecuteJavaScript: true
       },
       titleBarStyle: 'default',
-      show: false
+      show: false,
+      backgroundColor: '#f5f5f5'
     });
 
-    // 监听渲染进程的控制台消息
+    // 开发工具
+    if (process.env.NODE_ENV === 'development') {
+      this.mainWindow.webContents.openDevTools();
+    }
+
+    // 监听控制台消息
     this.mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
       const levels = ['', 'INFO', 'WARNING', 'ERROR'];
-      console.log(`[渲染进程 ${levels[level] || level}] ${message} (${sourceId}:${line})`);
+      console.log(`[Renderer ${levels[level] || level}] ${message}`);
     });
 
-    // 监听加载失败事件
-    this.mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
-      console.error(`页面加载失败: ${validatedURL}, 错误代码: ${errorCode}, 描述: ${errorDescription}`);
-    });
-
-    // 监听预加载脚本相关事件
-    this.mainWindow.webContents.on('preload-error', (event, preloadPath, error) => {
-      console.error(`预加载脚本错误: ${preloadPath}, 错误:`, error);
-    });
-
-    // 开发环境加载React开发服务器，生产环境加载构建后的文件
-    // 默认视为开发环境，除非显式设置为 production
+    // 加载应用
     const isDev = process.env.NODE_ENV !== 'production';
-    console.log('是否为开发环境:', isDev, '(NODE_ENV:', process.env.NODE_ENV || '未设置', ')');
+    const loadUrl = isDev 
+      ? 'http://localhost:3000'  // React开发服务器
+      : `file://${path.join(__dirname, '..', 'renderer', 'build', 'index.html')}`;
     
-    const loadURL = 'http://localhost:3001';
-    console.log('尝试加载URL:', loadURL);
+    this.logger.info(`Loading URL: ${loadUrl}`);
     
-    this.mainWindow.loadURL(loadURL).then(() => {
-      console.log('页面加载成功');
-      this.mainWindow.webContents.openDevTools();
+    this.mainWindow.loadURL(loadUrl).then(() => {
+      this.logger.info('Window loaded successfully');
     }).catch((error) => {
-      console.error('页面加载失败:', error);
+      this.logger.error('Window load failed:', error);
     });
 
     this.mainWindow.once('ready-to-show', () => {
-      console.log('窗口准备就绪，显示窗口');
       this.mainWindow.show();
+      this.logger.info('Window is ready to show');
     });
 
     this.mainWindow.on('closed', () => {
-      console.log('窗口已关闭');
+      this.logger.info('Window closed');
       this.mainWindow = null;
     });
   }
 
   setupIpcHandlers() {
+    this.logger.info('Setting up IPC handlers');
+    
     // 测试连接
     ipcMain.handle('test-connection', async () => {
-      console.log('[MAIN] 收到预加载脚本的测试连接请求');
       return '连接测试成功';
     });
 
-    // 获取AI网站配置
+    // AI 网站管理
     ipcMain.handle('get-ai-sites', async () => {
       return await this.dbManager.getAiSites();
     });
 
-    // 保存AI网站配置
     ipcMain.handle('save-ai-site', async (event, siteData) => {
       return await this.dbManager.saveAiSite(siteData);
     });
 
-    // 删除AI网站配置
     ipcMain.handle('delete-ai-site', async (event, siteId) => {
       return await this.dbManager.deleteAiSite(siteId);
     });
 
-    // 获取历史记录
-    ipcMain.handle('get-history', async () => {
-      return await this.dbManager.getHistory();
+    // 历史记录
+    ipcMain.handle('get-history', async (event, options) => {
+      const limit = options?.limit || 50;
+      const offset = options?.offset || 0;
+      return await this.dbManager.getHistory(limit, offset);
     });
 
-     // 保存问答记录
-     ipcMain.handle('save-qa-record', async (event, record) => {
-       return await this.dbManager.saveQaRecord(record);
-     });
+    ipcMain.handle('delete-history-record', async (event, recordId) => {
+      return await this.dbManager.deleteHistoryRecord(recordId);
+    });
 
-     // 删除历史记录
-     ipcMain.handle('delete-history-record', async (event, recordId) => {
-       return await this.dbManager.deleteHistoryRecord(recordId);
-     });
-
-    // 获取API配置
+    // API 配置
     ipcMain.handle('get-api-config', async () => {
       return await this.dbManager.getApiConfig();
     });
 
-    // 保存API配置
     ipcMain.handle('save-api-config', async (event, config) => {
       return await this.dbManager.saveApiConfig(config);
     });
 
-     // 处理问题（集成浏览器自动化）
-     ipcMain.handle('process-question', async (event, question) => {
-       try {
-         return await this.questionProcessor.processQuestion(question);
-       } catch (error) {
-         console.error('处理问题失败:', error);
-         throw error;
-       }
-     });
+    // 问题处理
+    ipcMain.handle('process-question', async (event, question, options) => {
+      try {
+        if (!this.questionProcessor) {
+          this.questionProcessor = new QuestionProcessor();
+          await this.questionProcessor.init();
+        }
+        
+        return await this.questionProcessor.processQuestion(question, options || {});
+      } catch (error) {
+        this.logger.error('Process question error:', error);
+        throw error;
+      }
+    });
 
-     // 控制浏览器窗口显示/隐藏
-     ipcMain.handle('show-browser', async () => {
-       if (this.browserAutomation) {
-         return await this.browserAutomation.showBrowser();
-       }
-       return { success: false, error: 'Browser not initialized' };
-     });
+    // 浏览器控制
+    ipcMain.handle('show-browser', async () => {
+      if (this.questionProcessor?.automation) {
+        return await this.questionProcessor.automation.showBrowser();
+      }
+      return { success: false, error: 'Browser not initialized' };
+    });
 
-     ipcMain.handle('hide-browser', async () => {
-       if (this.browserAutomation) {
-         return await this.browserAutomation.hideBrowser();
-       }
-       return { success: false, error: 'Browser not initialized' };
-     });
+    ipcMain.handle('hide-browser', async () => {
+      if (this.questionProcessor?.automation) {
+        return await this.questionProcessor.automation.hideBrowser();
+      }
+      return { success: false, error: 'Browser not initialized' };
+    });
 
-     // 显示登录通知
-     ipcMain.handle('show-login-notification', async (event, message) => {
-       if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-         // 发送到渲染进程显示通知
-         this.mainWindow.webContents.send('show-login-notification', message);
-       }
-       return { success: true };
-     });
-   }
+    // 系统状态
+    ipcMain.handle('get-system-status', async () => {
+      try {
+        if (this.questionProcessor) {
+          return await this.questionProcessor.getHealthStatus();
+        }
+        return { status: 'unavailable' };
+      } catch (error) {
+        return { status: 'error', error: error.message };
+      }
+    });
+
+    // 缓存管理
+    ipcMain.handle('clear-cache', async () => {
+      if (this.questionProcessor) {
+        await this.questionProcessor.clearCache();
+        return { success: true };
+      }
+      return { success: false, error: 'Processor not initialized' };
+    });
+
+    // 统计信息
+    ipcMain.handle('get-stats', async () => {
+      if (this.questionProcessor) {
+        return await this.questionProcessor.getStatsSummary();
+      }
+      return { sites: 0, records: 0 };
+    });
+
+    // Provider 信息
+    ipcMain.handle('get-providers', async () => {
+      return {
+        providers: providerRegistry.getAllProviderInfo(),
+        supportedTypes: providerRegistry.getRegisteredTypes()
+      };
+    });
+
+    // 启动 API 网关
+    ipcMain.handle('start-api-server', async (event, port) => {
+      try {
+        if (!this.apiGateway) {
+          this.apiGateway = new ApiGateway();
+          const actualPort = await this.apiGateway.start(port || 8080);
+          
+          // 保存 API 配置到数据库
+          await this.dbManager.saveApiConfig({
+            port: actualPort,
+            enabled: true
+          });
+          
+          return { success: true, port: actualPort };
+        }
+        return { success: false, error: 'API server already running' };
+      } catch (error) {
+        this.logger.error('Failed to start API server:', error);
+        return { success: false, error: error.message };
+      }
+    });
+
+    ipcMain.handle('stop-api-server', async () => {
+      try {
+        if (this.apiGateway) {
+          await this.apiGateway.stop();
+          this.apiGateway = null;
+          return { success: true };
+        }
+        return { success: false, error: 'API server not running' };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    });
+
+    // 显示登录通知
+    ipcMain.handle('show-login-notification', async (event, message) => {
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        this.mainWindow.webContents.send('show-login-notification', message);
+      }
+      return { success: true };
+    });
+  }
+
+  showErrorWindow(error) {
+    this.mainWindow = new BrowserWindow({
+      width: 600,
+      height: 400,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        preload: path.join(__dirname, 'preload.js')
+      }
+    });
+
+    this.mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>ChatKey - 启动错误</title>
+          <style>
+            body { 
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; 
+              padding: 40px; 
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              color: white;
+              margin: 0;
+              min-height: 100vh;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+            }
+            .container { 
+              background: rgba(255,255,255,0.95); 
+              padding: 40px; 
+              border-radius: 12px; 
+              box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+              max-width: 600px;
+              color: #333;
+            }
+            h2 { color: #e53e3e; margin-bottom: 20px; }
+            code { 
+              background: #f4f4f4; 
+              padding: 2px 6px; 
+              border-radius: 4px; 
+              font-family: 'Courier New', monospace;
+            }
+            .solution { 
+              background: #f0f9ff; 
+              padding: 15px; 
+              border-radius: 8px; 
+              margin: 15px 0;
+              border-left: 4px solid #3182ce;
+            }
+            .solution-title { 
+              font-weight: bold; 
+              color: #2c5282; 
+              margin-bottom: 8px;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h2>⚠️ ChatKey 启动失败</h2>
+            <p><strong>错误信息:</strong> ${error.message}</p>
+            <p>这通常是由于数据库配置问题导致的。</p>
+            
+            <div class="solution">
+              <div class="solution-title">🔧 解决方案:</div>
+              <ol>
+                <li><strong>检查数据库服务</strong>: 确保 MySQL 正在运行</li>
+                <li><strong>验证配置</strong>: 检查 .env 文件中的数据库连接信息</li>
+                <li><strong>切换数据库</strong>: 可以使用 SQLite（修改 DB_TYPE=sqlite）</li>
+              </ol>
+            </div>
+            
+            <p>请修复配置后重启应用。</p>
+            <p style="margin-top: 20px; font-size: 12px; color: #666;">
+              如需帮助，请查看项目文档或提交 Issue。
+            </p>
+          </div>
+        </body>
+      </html>
+    `)}`);
+  }
 }
 
-// 应用生命周期管理
-app.whenReady().then(() => {
-  // 提高Windows平台上的启动稳定性
+// 应用生命周期
+app.whenReady().then(async () => {
+  // Windows 平台优化
   if (process.platform === 'win32') {
     app.commandLine.appendArgument('disable-crash-pad');
   }
   
   const electronApp = new ElectronApp();
-  electronApp.init();
+  await electronApp.init();
+  
+  // 保存全局引用
+  global.electronApp = electronApp;
 });
 
 app.on('window-all-closed', () => {
@@ -291,3 +365,22 @@ app.on('activate', () => {
     electronApp.init();
   }
 });
+
+app.on('before-quit', async () => {
+  // 优雅关闭
+  try {
+    if (global.electronApp?.questionProcessor) {
+      await global.electronApp.questionProcessor.close();
+    }
+    if (global.electronApp?.apiGateway) {
+      await global.electronApp.apiGateway.stop();
+    }
+    if (global.electronApp?.dbManager) {
+      await global.electronApp.dbManager.close();
+    }
+  } catch (error) {
+    console.error('Error during shutdown:', error);
+  }
+});
+
+module.exports = { ElectronApp };

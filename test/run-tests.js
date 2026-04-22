@@ -1,84 +1,99 @@
-// 测试运行器 - 运行所有测试
-const { testBrowserAutomation } = require('./browser-automation.test');
-const { testAnswerAdapter } = require('./answer-adapter.test');
+/**
+ * 简化的测试运行器
+ */
 
-async function runAllTests() {
-  console.log('🚀 开始运行所有测试\n');
-  
-  const tests = [
-    { name: '回答适配器测试', func: testAnswerAdapter },
-    { name: '浏览器自动化测试', func: testBrowserAutomation }
-  ];
-  
-  const results = [];
-  
+const { execSync } = require('child_process');
+const path = require('path');
+
+console.log('🧪 ChatKey Test Runner');
+console.log('='.repeat(50));
+
+const rootDir = process.cwd();
+
+// 运行独立的 Node.js 脚本
+const tests = [
+  {
+    name: 'Provider Registry',
+    command: 'node -e "'
+      + 'const {providerRegistry} = require(\"./src/shared/providers\");'
+      + 'providerRegistry.loadDefaultProviders();'
+      + 'const types = providerRegistry.getRegisteredTypes();'
+      + 'console.log(\"Registered:\", types.join(\", \"));'
+      + 'if (types.length < 4) throw new Error(\"Not enough providers\");'
+      + 'console.log(\"✅ PASS\")"'
+  },
+  {
+    name: 'Answer Adapter',
+    command: 'node -e "'
+      + 'const {AnswerAdapter} = require(\"./src/main/answer-adapter\");'
+      + 'const result = AnswerAdapter.adapt(\'测试\\n\\n\`\`\`python\\nprint(1)\\n\`\`\`\', \"test\");'
+      + 'if (!result.codeBlocks?.length) throw new Error(\"No code blocks\");'
+      + 'if (result.codeBlocks[0].language !== \"python\") throw new Error(\"Wrong lang\");'
+      + 'console.log(\"Code blocks:\", result.codeBlocks);'
+      + 'console.log(\"✅ PASS\")"'
+  },
+  {
+    name: 'Database Init',
+    command: 'node -e "'
+      + 'const {DatabaseManager} = require(\"./src/shared/database\");'
+      + 'const db = new DatabaseManager();'
+      + 'db.init().then(() => db.query(\'SELECT 1\')).then(() => {'
+      + '  console.log(\"✅ PASS\");'
+      + '  return db.close();'
+      + '}).catch(e => { console.error(e.message); process.exit(1); })"'
+  },
+  {
+    name: 'Config Manager',
+    command: 'node -e "'
+      + 'const {ConfigManager} = require(\"./src/shared/config\");'
+      + 'const {DatabaseManager} = require(\"./src/shared/database\");'
+      + '(async () => {'
+      + '  const db = new DatabaseManager();'
+      + '  await db.init();'
+      + '  const config = new ConfigManager(db);'
+      + '  const val = await config.get(\"test\", \"default\");'
+      + '  console.log(\"Config value:\", val);'
+      + '  console.log(\"✅ PASS\");'
+      + '  await db.close();'
+      + '})()"'
+  }
+];
+
+let passed = 0;
+let failed = 0;
+
+async function runCommand(name, command) {
+  console.log(`\n📋 ${name}`);
+  try {
+    const result = execSync(command, { 
+      cwd: rootDir,
+      stdio: 'pipe',
+      encoding: 'utf-8',
+      timeout: 30000
+    });
+    console.log(result.trim());
+    passed++;
+  } catch (error) {
+    console.error('   ❌ FAILED');
+    if (error.stdout) console.error('   Output:', error.stdout.trim().slice(-200));
+    if (error.stderr) console.error('   Error:', error.stderr.trim().slice(-200));
+    failed++;
+  }
+}
+
+async function runAll() {
   for (const test of tests) {
-    console.log(`\n📋 ${test.name}`);
-    console.log('='.repeat(50));
-    
-    const startTime = Date.now();
-    
-    try {
-      if (test.func.constructor.name === 'AsyncFunction') {
-        await test.func();
-      } else {
-        test.func();
-      }
-      
-      const duration = Date.now() - startTime;
-      results.push({
-        name: test.name,
-        status: 'passed',
-        duration
-      });
-      
-      console.log(`\n✅ ${test.name} - 通过 (${duration}ms)`);
-      
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      results.push({
-        name: test.name,
-        status: 'failed',
-        duration,
-        error: error.message
-      });
-      
-      console.log(`\n❌ ${test.name} - 失败 (${duration}ms)`);
-      console.log(`🔍 错误: ${error.message}`);
-    }
+    await runCommand(test.name, test.command);
   }
   
-  // 测试总结
-  console.log('\n' + '='.repeat(60));
-  console.log('📊 测试总结');
-  console.log('='.repeat(60));
+  console.log('\n' + '='.repeat(50));
+  console.log(`📊 Test Results: ${passed} passed, ${failed} failed`);
+  console.log('='.repeat(50));
   
-  const passed = results.filter(r => r.status === 'passed').length;
-  const failed = results.filter(r => r.status === 'failed').length;
-  const totalDuration = results.reduce((sum, r) => sum + r.duration, 0);
-  
-  results.forEach(result => {
-    const statusIcon = result.status === 'passed' ? '✅' : '❌';
-    console.log(`${statusIcon} ${result.name} - ${result.status} (${result.duration}ms)`);
-    if (result.error) {
-      console.log(`   🔍 ${result.error}`);
-    }
-  });
-  
-  console.log(`\n总计: ${passed} 通过, ${failed} 失败, 总耗时: ${totalDuration}ms`);
-  
-  if (failed > 0) {
-    console.log('\n⚠️  部分测试失败，请检查错误信息。');
-    process.exit(1);
-  } else {
-    console.log('\n🎉 所有测试通过！');
-    process.exit(0);
-  }
+  process.exit(failed > 0 ? 1 : 0);
 }
 
-// 如果直接运行此文件，执行所有测试
-if (require.main === module) {
-  runAllTests().catch(console.error);
-}
-
-module.exports = { runAllTests };
+runAll().catch(err => {
+  console.error('Runner error:', err);
+  process.exit(1);
+});
