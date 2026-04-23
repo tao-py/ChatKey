@@ -63,9 +63,12 @@ class BrowserAutomation {
    * 为网站获取或创建 Provider 实例
    */
   async getProvider(site) {
+    this.logger.info(`[${site.name}] Getting provider, provider_type=${site.provider_type}`);
     // 检查缓存
     if (this.providerCache.has(site.id)) {
-      return this.providerCache.get(site.id);
+      const cached = this.providerCache.get(site.id);
+      this.logger.info(`[${site.name}] Using cached provider: ${cached.config.providerType}`);
+      return cached;
     }
 
     // 从数据库记录创建 Provider
@@ -74,7 +77,7 @@ class BrowserAutomation {
     // 缓存 Provider
     this.providerCache.set(site.id, provider);
     
-    this.logger.info(`[${site.name}] Created ${provider.config.providerType} provider`);
+    this.logger.info(`[${site.name}] Created provider: ${provider.config.providerType}`);
     return provider;
   }
 

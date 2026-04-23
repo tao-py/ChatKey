@@ -14,7 +14,12 @@
     "dist": "electron-builder --publish=never",
     "lint": "eslint src/",
     "test": "node test/run-tests.js",
-    "test:unit": "jest"
+    "test:unit": "jest",
+    "api": "node src/api/server.js",
+    "debug:browser": "node start-debug-browser.js",
+    "check:login": "node check-login.js",
+    "init:db": "node init_mysql.js",
+    "fix:platforms": "node fix-all-platforms.js"
   },
   "keywords": [
     "electron",
@@ -40,6 +45,7 @@
   },
   "dependencies": {
     "body-parser": "^1.20.2",
+    "chrome-remote-interface": "^0.33.3",
     "cors": "^2.8.5",
     "crypto": "^1.0.1",
     "dotenv": "^17.3.1",

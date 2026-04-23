@@ -268,7 +268,7 @@ class BaseProvider {
 // ============ 具体 Provider 实现 ============
 
 /**
- * DeepSeek Web Provider
+ * DeepSeek Web Provider (已存在，保持)
  */
 class DeepSeekProvider extends BaseProvider {
   constructor(config) {
@@ -295,24 +295,48 @@ class DeepSeekProvider extends BaseProvider {
     this.setStatus(ProviderStatus.READY);
   }
 
-  async authenticate(page) {
+   async authenticate(page) {
     // DeepSeek 认证逻辑
     console.log(`[${this.config.name}] Authenticating...`);
     
-    // 检查是否需要登录
-    const loginSelectors = [
-      'a[href*="login"]',
-      'button[class*="login"]',
-      '.login-tab',
-      'button:has-text("登录")'
+    // 等待页面加载
+    await page.waitForTimeout(2000);
+    
+    // 检查是否需要登录 - 使用多种方法
+    const checks = [
+      // 方法1: 检查登录按钮（使用Puppeteer的:has-text）
+      async () => {
+        try {
+          const loginBtn = await page.$('button:has-text("登录")');
+          if (loginBtn && await loginBtn.isVisible()) {
+            return true;
+          }
+        } catch (e) {}
+        return false;
+      },
+      // 方法2: 检查页面文本
+      async () => {
+        const bodyText = await page.evaluate(() => document.body.textContent || '');
+        return bodyText.includes('登录') || bodyText.includes('Login');
+      },
+      // 方法3: 检查登录链接
+      async () => {
+        const loginLink = await page.$('a[href*="login"]');
+        if (loginLink) return true;
+        const loginBtn2 = await page.$('button[class*="login"]');
+        return !!loginBtn2;
+      }
     ];
     
-    for (const selector of loginSelectors) {
-      const element = await page.$(selector);
-      if (element && await element.isVisible()) {
-        console.log(`[${this.config.name}] Login required`);
-        this.setStatus(ProviderStatus.AUTH_REQUIRED);
-        return false;
+    for (const check of checks) {
+      try {
+        if (await check()) {
+          console.log(`[${this.config.name}] Login required`);
+          this.setStatus(ProviderStatus.AUTH_REQUIRED);
+          return false;
+        }
+      } catch (err) {
+        // 忽略检查错误
       }
     }
     
@@ -408,8 +432,35 @@ class TongyiProvider extends BaseProvider {
     });
   }
 
-  async initialize() {
+   async initialize() {
     this.setStatus(ProviderStatus.READY);
+  }
+
+  async authenticate(page) {
+    console.log(`[${this.config.name}] Authenticating...`);
+    
+    // 检查是否需要登录
+    const loginSelectors = [
+      'a[href*="login"]',
+      'button:has-text("登录")',
+      '.login-button'
+    ];
+    
+    for (const selector of loginSelectors) {
+      try {
+        const element = await page.$(selector);
+        if (element && await element.isVisible()) {
+          console.log(`[${this.config.name}] Login required`);
+          this.setStatus(ProviderStatus.AUTH_REQUIRED);
+          return false;
+        }
+      } catch (err) {
+        // 忽略选择器错误
+      }
+    }
+    
+    this.setStatus(ProviderStatus.READY);
+    return true;
   }
 
   async sendQuestion(page, question) {
@@ -501,6 +552,25 @@ class DoubaoProvider extends BaseProvider {
     });
   }
 
+  async initialize() {
+    this.setStatus(ProviderStatus.READY);
+  }
+
+  async authenticate(page) {
+    console.log(`[${this.config.name}] Authenticating...`);
+    
+    // 检查是否需要登录
+    const loginBtn = await page.$('button:has-text("登录")');
+    if (loginBtn) {
+      console.log(`[${this.config.name}] Login required`);
+      this.setStatus(ProviderStatus.AUTH_REQUIRED);
+      return false;
+    }
+    
+    this.setStatus(ProviderStatus.READY);
+    return true;
+  }
+
   async sendQuestion(page, question) {
     await this.preparePage(page);
     
@@ -564,6 +634,36 @@ class YiyanProvider extends BaseProvider {
       maxTokens: 4096,
       contextWindow: 32000
     });
+  }
+
+  async initialize() {
+    this.setStatus(ProviderStatus.READY);
+  }
+
+  async authenticate(page) {
+    console.log(`[${this.config.name}] Authenticating...`);
+    
+    // 文心一言可能需要检查登录状态
+    const loginSelectors = [
+      'button:has-text("登录")',
+      'a[href*="login"]'
+    ];
+    
+    for (const selector of loginSelectors) {
+      try {
+        const element = await page.$(selector);
+        if (element && await element.isVisible()) {
+          console.log(`[${this.config.name}] Login required`);
+          this.setStatus(ProviderStatus.AUTH_REQUIRED);
+          return false;
+        }
+      } catch (err) {
+        // 忽略
+      }
+    }
+    
+    this.setStatus(ProviderStatus.READY);
+    return true;
   }
 
   async sendQuestion(page, question) {
@@ -713,15 +813,24 @@ class ProviderRegistry {
    * 加载所有默认 Provider
    */
   loadDefaultProviders() {
-    // 注册内置 Provider
+    // 基础内置 Provider
     this.register(DeepSeekProvider);
     this.register(TongyiProvider);
     this.register(DoubaoProvider);
     this.register(YiyanProvider);
     
-    // 可以继续添加更多...
-    // this.register(ChatGPTProvider);
-    // this.register(ClaudeProvider);
+    // 扩展 Provider（从extended模块动态加载）
+    try {
+      const extended = require('./providers-extended');
+      if (extended.ChatGPTProvider) this.register(extended.ChatGPTProvider);
+      if (extended.ClaudeProvider) this.register(extended.ClaudeProvider);
+      if (extended.GeminiProvider) this.register(extended.GeminiProvider);
+      if (extended.GrokProvider) this.register(extended.GrokProvider);
+      if (extended.PerplexityProvider) this.register(extended.PerplexityProvider);
+      if (extended.KimiProvider) this.register(extended.KimiProvider);
+    } catch (err) {
+      console.warn('Failed to load extended providers:', err.message);
+    }
     
     this.loaded = true;
     console.log(`[ProviderRegistry] Loaded ${this.providers.size} providers`);
@@ -830,10 +939,19 @@ class ProviderFactory {
 const providerRegistry = new ProviderRegistry();
 providerRegistry.loadDefaultProviders();
 
+// 注册扩展Provider
+const extendedProviders = require('./providers-extended');
+providerRegistry.register(extendedProviders.ChatGPTProvider);
+providerRegistry.register(extendedProviders.ClaudeProvider);
+providerRegistry.register(extendedProviders.GeminiProvider);
+providerRegistry.register(extendedProviders.GrokProvider);
+providerRegistry.register(extendedProviders.PerplexityProvider);
+providerRegistry.register(extendedProviders.KimiProvider);
+
 // Provider 工厂单例
 const providerFactory = new ProviderFactory(providerRegistry);
 
-// 导出的模块
+// 导出
 module.exports = {
   // 类和接口
   BaseProvider,
@@ -842,12 +960,15 @@ module.exports = {
   ProviderResult,
   ProviderStatus,
   
-  // 具体实现
+  // 基础实现
   DeepSeekProvider,
   TongyiProvider,
   DoubaoProvider,
   YiyanProvider,
   GenericProvider,
+  
+  // 扩展实现
+  ...require('./providers-extended'),
   
   // 注册和工厂
   ProviderRegistry,

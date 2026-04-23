@@ -4,17 +4,18 @@
  */
 
 const mysql = require('mysql2/promise');
+require('dotenv').config();
 
 async function initDatabase() {
   console.log('开始初始化MySQL数据库...');
   
-  // MySQL连接配置 - 使用正确密码
+  // MySQL连接配置 - 从环境变量读取
   const config = {
-    host: 'localhost',
-    port: 3306,
-    user: 'root',
-    password: 'ChatKey@2024',
-    multipleStatements: true
+    host: process.env.DB_HOST || 'localhost',
+    port: parseInt(process.env.DB_PORT) || 3306,
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || 'ChatKey@2024',
+    connectTimeout: 30000
   };
 
   let connection;

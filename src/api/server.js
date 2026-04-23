@@ -110,9 +110,13 @@ class ApiGateway {
     }
 
     const apiKey = authHeader.replace('Bearer ', '').replace('X-API-Key ', '');
+    console.log(`[Auth] API Key: ${apiKey.substring(0, 20)}...`);
     
     try {
       const config = await this.dbManager.getApiConfig();
+      console.log(`[Auth] DB API Key: ${config?.api_key?.substring(0, 20)}...`);
+      console.log(`[Auth] Match: ${config?.api_key === apiKey}`);
+      
       if (!config || config.api_key !== apiKey) {
         return res.status(401).json({
           error: {
@@ -757,11 +761,14 @@ class GatewayCache {
     this.memoryCache.set(key, { value, expires: expiresAt.getTime() });
     
     try {
+      // 格式化为 MySQL TIMESTAMP 格式: YYYY-MM-DD HH:MM:SS
+      const mysqlTimestamp = expiresAt.toISOString().replace('T', ' ').substring(0, 19);
+      
       await this.dbManager.run(`
         INSERT INTO response_cache (question_hash, response_data, expires_at)
         VALUES (?, ?, ?)
         ON DUPLICATE KEY UPDATE response_data = ?, expires_at = ?
-      `, [key, JSON.stringify(value), expiresAt.toISOString(), JSON.stringify(value), expiresAt.toISOString()]);
+      `, [key, JSON.stringify(value), mysqlTimestamp, JSON.stringify(value), mysqlTimestamp]);
     } catch (error) {
       console.warn('Cache set failed:', error.message);
     }

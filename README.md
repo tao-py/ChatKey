@@ -5,12 +5,14 @@
 ## 🌟 功能特性
 
 ### 核心功能
-- ✅ **多平台同时提问**: 一次输入，并发向多个 AI 平台发送问题
+- ✅ **多平台同时提问**: 一次输入，并发向 11 个 AI 平台发送问题
 - ✅ **智能回答对比**: 直观对比不同 AI 的回答，提取要点、代码块、摘要
 - ✅ **OpenAI 兼容 API**: 提供 `/v1/chat/completions` 标准接口，无缝对接现有工具
 - ✅ **问答历史管理**: MySQL 持久化存储，支持搜索、分析和回顾
 - ✅ **Provider 插件化**: 新增 AI 平台无需修改核心代码，动态注册即可
 - ✅ **配置热重载**: 所有配置支持运行时更新，无需重启服务
+- ✅ **登录状态保持**: 使用Chrome用户数据目录，持久化登录会话
+- ✅ **智能降级**: API失败自动降级为DOM模拟，确保稳定性
 
 ### 高级功能
 - 🚀 **生产级网关**: 限流器（令牌桶）、熔断器、响应缓存三位一体
@@ -103,8 +105,8 @@
 git clone https://github.com/your-username/ChatKey.git
 cd ChatKey
 
-# 2. 安装依赖（包括前端）
-npm run install:all
+# 2. 安装依赖
+npm install
 
 # 3. 启动 MySQL（Docker 方式，推荐）
 docker run --name chatkey-mysql \
@@ -113,14 +115,17 @@ docker run --name chatkey-mysql \
   -p 3306:3306 \
   -d mysql:8
 
-# 4. 配置环境变量
-cp .env.example .env
-# 编辑 .env 文件，配置数据库连接信息
+# 4. 初始化数据库
+npm run init:db
 
-# 5. 初始化数据库
-npm run init-db
+# 5. 启动调试浏览器并登录AI平台
+npm run debug:browser
+# 在弹出的Chrome窗口中登录各个AI平台（DeepSeek、ChatGPT等）
 
-# 6. 启动开发环境
+# 6. 验证登录状态
+npm run check:login
+
+# 7. 启动完整应用
 npm run dev
 ```
 
@@ -273,14 +278,19 @@ ChatKey/
 
 ### 支持的 AI 平台
 
-| 平台名称 | 状态 | Provider 类型 | 特点 | 备注 |
-|---------|------|--------------|------|------|
-| DeepSeek | ✅ 完全支持 | `deepseek` | 高质量技术回答 | 默认启用，需登录 |
-| 通义千问 | ✅ 完全支持 | `tongyi` | 阿里巴巴 AI 平台 | 默认启用，需登录 |
-| 豆包 | ✅ 基础支持 | `doubao` | 字节跳动 AI | 需手动登录 |
-| 文心一言 | ✅ 基础支持 | `yiyan` | 百度 AI 平台 | 需手动登录 |
-| ChatGPT | ⏳ 计划中 | `openai` | OpenAI 官方 | 即将支持 |
-| Claude | ⏳ 计划中 | `anthropic` | Anthropic AI | 即将支持 |
+| 平台名称 | 状态 | Provider 类型 | 特点 | 登录要求 |
+|---------|------|--------------|------|---------|
+| DeepSeek | ✅ 完全支持 | `deepseek-web` | 高质量技术回答 | 需要登录 |
+| 通义千问 | ✅ 完全支持 | `qwen-web` | 阿里巴巴 AI 平台 | 需要登录 |
+| ChatGPT | ✅ 完全支持 | `chatgpt-web` | OpenAI 官方 | 需要登录 |
+| Claude | ✅ 完全支持 | `claude-web` | Anthropic AI | 需要登录 |
+| Gemini | ✅ 完全支持 | `gemini-web` | Google AI | 需要登录 |
+| Grok | ✅ 完全支持 | `grok-web` | xAI 官方 | 需要登录 |
+| Perplexity | ✅ 完全支持 | `perplexity-web` | 搜索增强型 AI | 需要登录 |
+| Kimi | ✅ 完全支持 | `kimi-web` | Moonshot 长上下文 | 需要登录 |
+| ChatGLM | ✅ 完全支持 | `glm-web` | 智谱 AI | 需要登录 |
+| 豆包 | ⚠️ 基础支持 | `doubao-web` | 字节跳动 AI | 需手动登录 |
+| 文心一言 | ⚠️ 基础支持 | `yiyan-web` | 百度 AI 平台 | 需手动登录 |
 
 > **注意**: 当前版本使用浏览器自动化方式访问 AI 平台，需要用户提前在浏览器中登录对应平台，或通过 Cookie 注入实现免登录。
 
@@ -467,16 +477,15 @@ configManager.watch('provider.*', (changes) => {
 ## 🔧 技术债务和改进建议
 
 ### 待完成项（优先级从高到低）
-1. **流式响应实现** - 当前为模拟，需集成真实的 Server-Sent Events（高优先级）
-2. **MCP-Playwright 端到端测试** - 需要实际登录测试各 AI 平台（高优先级）
-3. **前端管理界面适配** - React 组件需支持 Provider 配置管理（中优先级）
-4. **监控面板开发** - 实时展示各 Provider 状态、指标仪表盘（中优先级）
-5. **Cookie 加密存储** - 当前为明文 JSON，需加密敏感信息（中优先级）
-6. **更多 Provider 实现** - ChatGPT、Claude、Gemini 等（中优先级）
-7. **缓存升级至 Redis** - 当前为 MySQL 缓存，可升级分布式缓存（低优先级）
-8. **WebSocket 实时推送** - 替代 HTTP 轮询，提升实时性（低优先级）
-9. **微服务拆分** - Auth Service、Provider Service、Gateway 独立（远期）
-10. **Docker + Kubernetes 部署** - 容器化支持（远期）
+1. **流式响应前端集成** - 目前API支持SSE，前端需实时展示（中优先级）
+2. **前端管理界面增强** - Provider配置、登录状态管理（中优先级）
+3. **监控面板开发** - 实时展示各Provider状态、指标仪表盘（中优先级）
+4. **Cookie加密存储** - 当前为明文JSON，需加密敏感信息（中优先级）
+5. **更多Provider优化** - 豆包、文心一言的DOM模拟完善（低优先级）
+6. **缓存升级至Redis** - 当前为MySQL缓存，可升级分布式缓存（低优先级）
+7. **WebSocket实时推送** - 替代HTTP轮询，提升实时性（低优先级）
+8. **微服务拆分** - Auth Service、Provider Service、Gateway独立（远期）
+9. **Docker + Kubernetes部署** - 容器化支持（远期）
 
 ### 性能优化点
 - 页面池可进一步优化（预加载、保持登录状态、智能回收）

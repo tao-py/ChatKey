@@ -3,7 +3,7 @@
  * 使用 Provider 模式，整合 ConfigManager 和增强的错误处理
  */
 
-const { BrowserAutomation } = require('./browser-automation');
+const { EnhancedBrowserManager } = require('./browser-manager');
 const { DatabaseManager } = require('../shared/database');
 const { ConfigManager } = require('../shared/config');
 const { Logger } = require('./logger');
@@ -12,7 +12,7 @@ const { providerRegistry } = require('../shared/providers');
 
 class QuestionProcessor {
   constructor() {
-    this.automation = new BrowserAutomation();
+    this.browserManager = null;  // 延迟初始化
     this.dbManager = new DatabaseManager();
     this.configManager = new ConfigManager(this.dbManager);
     this.logger = new Logger('QuestionProcessor');
@@ -22,27 +22,30 @@ class QuestionProcessor {
       resetTimeout: 60000
     });
     this.responseCache = new ResponseCache(this.dbManager);
+    this.initialized = false;
   }
 
   async init() {
+    if (this.initialized) return;
+    
     this.logger.info('Initializing QuestionProcessor');
     
     try {
       // 初始化数据库
       await this.dbManager.init();
       
-      // 初始化浏览器自动化
-      await this.automation.init();
+      // 初始化浏览器管理器
+      this.browserManager = new EnhancedBrowserManager();
+      await this.browserManager.init();
       
       // 加载 Provider 注册表
       providerRegistry.loadDefaultProviders();
       
-      // 记录系统启动指标
-      await this.recordMetric('system.startup', 1, { component: 'QuestionProcessor' });
-      
+      this.initialized = true;
       this.logger.info('QuestionProcessor initialized successfully');
       console.log('✅ 系统初始化完成');
       console.log(`📦 已加载 ${providerRegistry.providers.size} 个 Provider`);
+      console.log(`🌐 浏览器管理器: ${this.attachOnly ? '连接模式' : '启动模式'}`);
       
     } catch (error) {
       this.logger.error('Failed to initialize QuestionProcessor:', error);
@@ -92,7 +95,7 @@ class QuestionProcessor {
         status: 'processing'
       });
       
-      // 5. 处理问题（支持流式和非流式）
+      // 5. 处理问题（并发批处理）
       const results = await this.processWithPipeline(question, sites, {
         requestId,
         recordId,
@@ -161,14 +164,14 @@ class QuestionProcessor {
   }
 
   /**
-   * 批量并行处理
+   * 批量并行处理（使用BrowserManager）
    */
   async processBatch(question, sites, context) {
     const results = [];
     
     // 分批处理以控制并发
-    for (let i = 0; i < sites.length; i += this.automation.maxConcurrency) {
-      const batch = sites.slice(i, i + this.automation.maxConcurrency);
+    for (let i = 0; i < sites.length; i += this.browserManager.maxConcurrency) {
+      const batch = sites.slice(i, i + this.browserManager.maxConcurrency);
       
       const batchPromises = batch.map(site => 
         this.processSiteWithCircuitBreaker(site, question, context)
@@ -212,7 +215,7 @@ class QuestionProcessor {
     }
     
     try {
-      const result = await this.automation.sendQuestionToSiteWithRetry(site, question);
+      const result = await this.browserManager.sendQuestionToSite(site, question);
       
       // 记录成功
       this.circuitBreaker.recordSuccess(circuitKey);
@@ -335,8 +338,8 @@ class QuestionProcessor {
    */
   async getHealthStatus() {
     const dbHealth = await this.dbManager.healthCheck();
-    const browserStatus = await this.automation.getStatus();
-    const providerStats = await this.automation.getAllProviderStats();
+    const browserStatus = await this.browserManager?.getStatus() || { initialized: false };
+    const providerStats = await this.browserManager?.getAllProviderStats() || [];
     
     return {
       status: dbHealth.healthy && browserStatus.initialized ? 'healthy' : 'unhealthy',
@@ -352,7 +355,7 @@ class QuestionProcessor {
    */
   async clearCache() {
     await this.responseCache.clear();
-    this.automation.clearAllProviderCache();
+    this.browserManager?.clearAllProviderCache();
     this.logger.info('Cache cleared');
   }
 
@@ -360,7 +363,9 @@ class QuestionProcessor {
    * 关闭资源
    */
   async close() {
-    await this.automation.close();
+    if (this.browserManager) {
+      await this.browserManager.close();
+    }
     this.dbManager.close();
     this.logger.info('QuestionProcessor closed');
   }
@@ -489,7 +494,9 @@ class ResponseCache {
       expires: expiresAt.getTime()
     });
     
-    // 保存到数据库
+    // 保存到数据库 - 使用 MySQL TIMESTAMP 格式
+    const mysqlTimestamp = expiresAt.toISOString().replace('T', ' ').substring(0, 19);
+    
     try {
       await this.dbManager.run(`
         INSERT INTO response_cache (question_hash, question_text, response_data, expires_at)
@@ -497,11 +504,11 @@ class ResponseCache {
         ON DUPLICATE KEY UPDATE response_data = ?, expires_at = ?
       `, [
         hash,
-        question.substring(0, 500), // 存储问题摘要
+        question.substring(0, 500),
         JSON.stringify(value),
-        expiresAt.toISOString(),
+        mysqlTimestamp,
         JSON.stringify(value),
-        expiresAt.toISOString()
+        mysqlTimestamp
       ]);
     } catch (error) {
       console.warn('Cache set error:', error.message);
