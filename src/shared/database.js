@@ -4,9 +4,29 @@
  */
 
 const mysql = require('mysql2/promise');
-const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs').promises;
+
+// 确保加载环境变量
+try {
+  require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
+} catch (e) {
+  // dotenv 可能未安装，忽略
+}
+
+// 延迟加载 sqlite3，仅在需要时使用
+let sqlite3 = null;
+
+async function getSQLite() {
+  if (!sqlite3) {
+    try {
+      sqlite3 = (await import('sqlite3')).verbose();
+    } catch (error) {
+      throw new Error('SQLite module not available. Please install sqlite3 or use MySQL mode.');
+    }
+  }
+  return sqlite3;
+}
 
 class DatabaseManager {
   constructor() {
@@ -98,6 +118,8 @@ class DatabaseManager {
 
   async initSQLite() {
     console.log('Connecting to SQLite...');
+    
+    const sqlite3 = await getSQLite();
     
     const dbDir = path.dirname(this.sqlitePath);
     await fs.mkdir(dbDir, { recursive: true });
@@ -582,20 +604,31 @@ class DatabaseManager {
     }
   }
 
-  async getStats() {
-    if (this.dbType === 'mysql') {
-      const [status] = await this.query('SHOW STATUS LIKE "Connections"');
-      const [threads] = await this.query('SHOW STATUS LIKE "Threads_connected"');
-      return {
-        type: 'mysql',
-        totalConnections: parseInt(status[0].Value) || 0,
-        activeConnections: parseInt(threads[0].Value) || 0,
-        poolSize: this.config.connectionLimit
-      };
-    } else {
-      return { type: 'sqlite', mode: 'file-based' };
-    }
-  }
+   async getStats() {
+     if (this.dbType === 'mysql') {
+       try {
+         const [status] = await this.query('SHOW STATUS LIKE "Connections"');
+         const [threads] = await this.query('SHOW STATUS LIKE "Threads_connected"');
+         return {
+           type: 'mysql',
+           totalConnections: status && status[0] ? parseInt(status[0].Value) || 0 : 0,
+           activeConnections: threads && threads[0] ? parseInt(threads[0].Value) || 0 : 0,
+           poolSize: this.config.connectionLimit
+         };
+       } catch (error) {
+         // 如果查询失败，返回默认值
+         return {
+           type: 'mysql',
+           totalConnections: 0,
+           activeConnections: 0,
+           poolSize: this.config.connectionLimit,
+           error: error.message
+         };
+       }
+     } else {
+       return { type: 'sqlite', mode: 'file-based' };
+     }
+   }
 
   generateApiKey() {
     return `sk-${Date.now()}-${Buffer.from(Math.random().toString(36)).toString('hex').slice(0, 24)}`;
@@ -731,9 +764,9 @@ class DatabaseManager {
   }
 
   // API配置相关操作
-  async getApiConfig() {
-    return await this.get('SELECT * FROM api_config WHERE enabled = 1 LIMIT 1');
-  }
+   async getApiConfig() {
+     return await this.get('SELECT * FROM api_config WHERE enabled = 1 ORDER BY id DESC LIMIT 1');
+   }
 
   async saveApiConfig(configData) {
     if (configData.id) {

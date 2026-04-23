@@ -109,7 +109,7 @@ npm run install:all
 # 3. 启动 MySQL（Docker 方式，推荐）
 docker run --name chatkey-mysql \
   -e MYSQL_ROOT_PASSWORD=ChatKey@2024 \
-  -e MYSQL_DATABASE=chatkey \
+  -e MYSQL_DATABASE=ai_qa_comparison \
   -p 3306:3306 \
   -d mysql:8
 
@@ -142,13 +142,13 @@ cd ../..
 # 方式一：使用 Docker（推荐）
 docker run --name chatkey-mysql \
   -e MYSQL_ROOT_PASSWORD=your_password \
-  -e MYSQL_DATABASE=chatkey \
+  -e MYSQL_DATABASE=ai_qa_comparison \
   -p 3306:3306 \
   -d mysql:8
 
 # 方式二：使用本地 MySQL
 # 创建数据库
-mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS chatkey CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS ai_qa_comparison CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 
 # 复制配置
 cp .env.example .env

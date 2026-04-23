@@ -21,27 +21,30 @@ class ElectronApp {
     this.logger = new Logger('ElectronApp');
   }
 
-  async init() {
-    this.logger.info('Initializing ElectronApp');
-    
-    try {
-      // 初始化数据库
-      await this.dbManager.init();
-      this.logger.info('Database initialized');
-      
-      // 创建窗口
-      this.createWindow();
-      
-      // 设置 IPC 处理器
-      this.setupIpcHandlers();
-      
-      this.logger.info('ElectronApp initialized successfully');
-      
-    } catch (error) {
-      this.logger.error('Failed to initialize ElectronApp:', error);
-      this.showErrorWindow(error);
-    }
-  }
+   async init() {
+     this.logger.info('Initializing ElectronApp');
+     
+     try {
+       // 初始化数据库
+       await this.dbManager.init();
+       this.logger.info('Database initialized');
+       
+       // 创建窗口
+       this.createWindow();
+       
+       // 设置 IPC 处理器
+       this.setupIpcHandlers();
+       
+       // 自动启动 API 服务器
+       await this.startApiServer();
+       
+       this.logger.info('ElectronApp initialized successfully');
+       
+     } catch (error) {
+       this.logger.error('Failed to initialize ElectronApp:', error);
+       this.showErrorWindow(error);
+     }
+   }
 
   createWindow() {
     this.logger.info('Creating main window...');
@@ -78,11 +81,11 @@ class ElectronApp {
       console.log(`[Renderer ${levels[level] || level}] ${message}`);
     });
 
-    // 加载应用
-    const isDev = process.env.NODE_ENV !== 'production';
-    const loadUrl = isDev 
-      ? 'http://localhost:3000'  // React开发服务器
-      : `file://${path.join(__dirname, '..', 'renderer', 'build', 'index.html')}`;
+     // 加载应用
+     const isDev = process.env.NODE_ENV !== 'production';
+     const loadUrl = isDev 
+       ? 'http://localhost:3001'  // React开发服务器
+       : `file://${path.join(__dirname, '..', 'renderer', 'build', 'index.html')}`;
     
     this.logger.info(`Loading URL: ${loadUrl}`);
     
@@ -255,89 +258,131 @@ class ElectronApp {
     });
   }
 
-  showErrorWindow(error) {
-    this.mainWindow = new BrowserWindow({
-      width: 600,
-      height: 400,
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true,
-        preload: path.join(__dirname, 'preload.js')
-      }
-    });
+   showErrorWindow(error) {
+     this.mainWindow = new BrowserWindow({
+       width: 600,
+       height: 400,
+       webPreferences: {
+         nodeIntegration: false,
+         contextIsolation: true,
+         preload: path.join(__dirname, 'preload.js')
+       }
+     });
 
-    this.mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="UTF-8">
-          <title>ChatKey - 启动错误</title>
-          <style>
-            body { 
-              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; 
-              padding: 40px; 
-              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-              color: white;
-              margin: 0;
-              min-height: 100vh;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-            }
-            .container { 
-              background: rgba(255,255,255,0.95); 
-              padding: 40px; 
-              border-radius: 12px; 
-              box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-              max-width: 600px;
-              color: #333;
-            }
-            h2 { color: #e53e3e; margin-bottom: 20px; }
-            code { 
-              background: #f4f4f4; 
-              padding: 2px 6px; 
-              border-radius: 4px; 
-              font-family: 'Courier New', monospace;
-            }
-            .solution { 
-              background: #f0f9ff; 
-              padding: 15px; 
-              border-radius: 8px; 
-              margin: 15px 0;
-              border-left: 4px solid #3182ce;
-            }
-            .solution-title { 
-              font-weight: bold; 
-              color: #2c5282; 
-              margin-bottom: 8px;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <h2>⚠️ ChatKey 启动失败</h2>
-            <p><strong>错误信息:</strong> ${error.message}</p>
-            <p>这通常是由于数据库配置问题导致的。</p>
-            
-            <div class="solution">
-              <div class="solution-title">🔧 解决方案:</div>
-              <ol>
-                <li><strong>检查数据库服务</strong>: 确保 MySQL 正在运行</li>
-                <li><strong>验证配置</strong>: 检查 .env 文件中的数据库连接信息</li>
-                <li><strong>切换数据库</strong>: 可以使用 SQLite（修改 DB_TYPE=sqlite）</li>
-              </ol>
-            </div>
-            
-            <p>请修复配置后重启应用。</p>
-            <p style="margin-top: 20px; font-size: 12px; color: #666;">
-              如需帮助，请查看项目文档或提交 Issue。
-            </p>
-          </div>
-        </body>
-      </html>
-    `)}`);
-  }
-}
+     this.mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`
+       <!DOCTYPE html>
+       <html>
+         <head>
+           <meta charset="UTF-8">
+           <title>ChatKey - 启动错误</title>
+           <style>
+             body { 
+               font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; 
+               padding: 40px; 
+               background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+               color: white;
+               margin: 0;
+               min-height: 100vh;
+               display: flex;
+               align-items: center;
+               justify-content: center;
+             }
+             .container { 
+               background: rgba(255,255,255,0.95); 
+               padding: 40px; 
+               border-radius: 12px; 
+               box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+               max-width: 600px;
+               color: #333;
+             }
+             h2 { color: #e53e3e; margin-bottom: 20px; }
+             code { 
+               background: #f4f4f4; 
+               padding: 2px 6px; 
+               border-radius: 4px; 
+               font-family: 'Courier New', monospace;
+             }
+             .solution { 
+               background: #f0f9ff; 
+               padding: 15px; 
+               border-radius: 8px; 
+               margin: 15px 0;
+               border-left: 4px solid #3182ce;
+             }
+             .solution-title { 
+               font-weight: bold; 
+               color: #2c5282; 
+               margin-bottom: 8px;
+             }
+           </style>
+         </head>
+         <body>
+           <div class="container">
+             <h2>⚠️ ChatKey 启动失败</h2>
+             <p><strong>错误信息:</strong> ${error.message}</p>
+             <p>这通常是由于数据库配置问题导致的。</p>
+             
+             <div class="solution">
+               <div class="solution-title">🔧 解决方案:</div>
+               <ol>
+                 <li><strong>检查数据库服务</strong>: 确保 MySQL 正在运行</li>
+                 <li><strong>验证配置</strong>: 检查 .env 文件中的数据库连接信息</li>
+                 <li><strong>切换数据库</strong>: 可以使用 SQLite（修改 DB_TYPE=sqlite）</li>
+               </ol>
+             </div>
+             
+             <p>请修复配置后重启应用。</p>
+             <p style="margin-top: 20px; font-size: 12px; color: #666;">
+               如需帮助，请查看项目文档或提交 Issue。
+             </p>
+           </div>
+         </body>
+       </html>
+     `)}`);
+   }
+
+    async startApiServer() {
+      try {
+        const { ApiGateway } = require('../api/server');
+        this.apiGateway = new ApiGateway();
+        
+        // 从环境变量或配置获取端口
+        const port = process.env.API_PORT ? parseInt(process.env.API_PORT) : 8080;
+        
+        const actualPort = await this.apiGateway.start(port);
+        this.logger.info(`API Gateway started on port ${actualPort}`);
+        
+        // 保存 API 配置到数据库（避免重复插入）
+        try {
+          // 先查询现有配置
+          const existingConfig = await this.dbManager.getApiConfig();
+          if (existingConfig) {
+            // 更新现有配置的端口和启用状态
+            await this.dbManager.saveApiConfig({
+              id: existingConfig.id,
+              port: actualPort,
+              enabled: true
+            });
+            this.logger.info(`Updated existing API config (id: ${existingConfig.id})`);
+          } else {
+            // 插入新配置（会自动生成 API key）
+            await this.dbManager.saveApiConfig({
+              port: actualPort,
+              enabled: true
+            });
+            this.logger.info('Created new API config');
+          }
+        } catch (error) {
+          this.logger.warn('Failed to save API config:', error.message);
+        }
+        
+        return actualPort;
+      } catch (error) {
+        this.logger.error('Failed to start API server:', error);
+        throw error;
+      }
+    }
+ }
 
 // 应用生命周期
 app.whenReady().then(async () => {

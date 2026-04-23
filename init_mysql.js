@@ -13,7 +13,7 @@ async function initDatabase() {
     host: 'localhost',
     port: 3306,
     user: 'root',
-    password: 'tao@1999',
+    password: 'ChatKey@2024',
     multipleStatements: true
   };
 

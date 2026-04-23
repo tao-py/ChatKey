@@ -579,26 +579,44 @@ class ApiGateway {
 
   // ============ 启动和停止 ============
 
-  async start(port = 8080) {
-    return new Promise((resolve, reject) => {
-      this.server = this.app.listen(port, async (err) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-        
-        console.log(`🚀 API Gateway 启动在端口 ${port}`);
-        console.log(`📋 OpenAPI 兼容端点: http://localhost:${port}/v1`);
-        console.log(`🔍 健康检查: http://localhost:${port}/health`);
-        console.log(`📊 统计: http://localhost:${port}/stats`);
-        
-        // 记录启动指标
-        await this.metrics.record('server.start', 1, { port });
-        
-        resolve(port);
-      });
-    });
-  }
+   async start(port = 8080) {
+     // 避免重复启动
+     if (this.server) {
+       const address = this.server.address();
+       const currentPort = address ? address.port : port;
+       console.log(`API Gateway already running on port ${currentPort}`);
+       return currentPort;
+     }
+     
+     try {
+       // 初始化数据库
+       await this.dbManager.init();
+       this.logger.info('Database initialized');
+       
+       return new Promise((resolve, reject) => {
+         this.server = this.app.listen(port, async (err) => {
+           if (err) {
+             this.server = null;
+             reject(err);
+             return;
+           }
+           
+           console.log(`🚀 API Gateway 启动在端口 ${port}`);
+           console.log(`📋 OpenAPI 兼容端点: http://localhost:${port}/v1`);
+           console.log(`🔍 健康检查: http://localhost:${port}/health`);
+           console.log(`📊 统计: http://localhost:${port}/stats`);
+           
+           // 记录启动指标
+           await this.metrics.record('server.start', 1, { port });
+           
+           resolve(port);
+         });
+       });
+     } catch (error) {
+       this.logger.error('Failed to initialize API Gateway:', error);
+       throw error;
+     }
+   }
 
   async stop() {
     if (this.server) {
